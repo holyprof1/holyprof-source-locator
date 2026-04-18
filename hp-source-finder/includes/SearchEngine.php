@@ -30,7 +30,6 @@ class HP_Source_Finder_SearchEngine {
     public function search($search_term, $filter) {
         $search_term = trim(sanitize_text_field((string) $search_term));
         $filter = sanitize_key((string) $filter);
-        $debug_info = array();
 
         if ($search_term === '') {
             return $this->empty_response();
@@ -43,7 +42,7 @@ class HP_Source_Finder_SearchEngine {
             ? $this->search_settings_locations($search_term, $filter)
             : array();
         $admin_page_results = $this->should_search_admin_pages($filter)
-            ? $this->search_admin_page_locations($filter, $search_variants, $is_settings_search, $is_text_finder_search, $debug_info)
+            ? $this->search_admin_page_locations($filter, $search_variants, $is_settings_search, $is_text_finder_search)
             : array();
         $allowed_extensions = $this->get_extensions_for_scope($filter);
         $results = array();
@@ -139,7 +138,6 @@ class HP_Source_Finder_SearchEngine {
             'admin_page_results' => $admin_page_results,
             'is_settings_search' => $is_settings_search,
             'is_text_finder_search' => $is_text_finder_search,
-            'debug_info' => $debug_info,
             'truncated' => $truncated,
             'max_results' => self::MAX_RESULTS,
         );
@@ -491,37 +489,19 @@ class HP_Source_Finder_SearchEngine {
         );
     }
 
-    private function search_admin_page_locations($scope, $variants, $is_settings_search, $is_text_finder_search, &$debug_info = array()) {
+    private function search_admin_page_locations($scope, $variants, $is_settings_search, $is_text_finder_search) {
         $results = array();
-        $checked_pages = 0;
 
         foreach ($this->get_plugin_admin_page_entries() as $entry) {
             if (! $this->admin_page_entry_matches_scope($entry, $scope)) {
                 continue;
             }
 
-            $checked_pages++;
-            $result = $this->build_admin_page_match_result($entry, $variants, $debug_info);
+            $result = $this->build_admin_page_match_result($entry, $variants);
 
-            if (empty($result)) {
-                $debug_info[] = sprintf(
-                    /* translators: 1: plugin name, 2: admin page title */
-                    __('No admin-page match found yet in %1$s -> %2$s.', 'hp-source-finder'),
-                    isset($entry['plugin_name']) ? $entry['plugin_name'] : __('Plugin page', 'hp-source-finder'),
-                    isset($entry['page_title']) ? $entry['page_title'] : (isset($entry['slug']) ? $entry['slug'] : __('Unknown page', 'hp-source-finder'))
-                );
-                continue;
+            if (! empty($result)) {
+                $results[] = $result;
             }
-
-            $results[] = $result;
-        }
-
-        if ($checked_pages > 0) {
-            $debug_info[] = sprintf(
-                /* translators: %d: number of plugin admin pages checked */
-                __('Checked %d plugin admin pages for rendered or callback text.', 'hp-source-finder'),
-                $checked_pages
-            );
         }
 
         return array_slice(
@@ -997,14 +977,13 @@ class HP_Source_Finder_SearchEngine {
         );
     }
 
-    private function build_admin_page_match_result($entry, $variants, &$debug_info = array()) {
+    private function build_admin_page_match_result($entry, $variants) {
         $callback_matches = $this->get_callback_file_matches(
             isset($entry['callback_files']) ? $entry['callback_files'] : array(),
             $variants,
-            $entry,
-            $debug_info
+            $entry
         );
-        $visible_text_matches = $this->get_visible_admin_page_matches($entry, $variants, $debug_info);
+        $visible_text_matches = $this->get_visible_admin_page_matches($entry, $variants);
         $field_match = $this->matches_entry_variants(
             array(
                 isset($entry['title']) ? $entry['title'] : '',
@@ -1193,7 +1172,7 @@ class HP_Source_Finder_SearchEngine {
         return $this->slug_to_label($plugin_slug);
     }
 
-    private function get_callback_file_matches($files, $variants, $entry = array(), &$debug_info = array()) {
+    private function get_callback_file_matches($files, $variants, $entry = array()) {
         $matches = array();
         $max_window_lines = 4;
 
@@ -1260,15 +1239,6 @@ class HP_Source_Finder_SearchEngine {
             }
         }
 
-        if (empty($matches) && ! empty($entry)) {
-            $debug_info[] = sprintf(
-                /* translators: 1: plugin name, 2: admin page title */
-                __('Checked callback files for %1$s -> %2$s but found no fragment match.', 'hp-source-finder'),
-                isset($entry['plugin_name']) ? $entry['plugin_name'] : __('Plugin page', 'hp-source-finder'),
-                isset($entry['page_title']) ? $entry['page_title'] : (isset($entry['slug']) ? $entry['slug'] : __('Unknown page', 'hp-source-finder'))
-            );
-        }
-
         return $matches;
     }
 
@@ -1282,8 +1252,8 @@ class HP_Source_Finder_SearchEngine {
         return is_array($index) ? $index : array();
     }
 
-    private function get_visible_admin_page_matches($entry, $variants, &$debug_info = array()) {
-        $index = $this->get_or_build_visible_admin_page_index($entry, $debug_info);
+    private function get_visible_admin_page_matches($entry, $variants) {
+        $index = $this->get_or_build_visible_admin_page_index($entry);
 
         if (empty($index['visible_text']) || ! is_array($index['visible_text'])) {
             return array();
@@ -1308,47 +1278,19 @@ class HP_Source_Finder_SearchEngine {
             }
         }
 
-        if (empty($matches)) {
-            $debug_info[] = sprintf(
-                /* translators: 1: plugin name, 2: admin page title */
-                __('Rendered admin-page text was indexed for %1$s -> %2$s, but nothing matched this search phrase.', 'hp-source-finder'),
-                isset($entry['plugin_name']) ? $entry['plugin_name'] : __('Plugin page', 'hp-source-finder'),
-                isset($entry['page_title']) ? $entry['page_title'] : (isset($entry['slug']) ? $entry['slug'] : __('Unknown page', 'hp-source-finder'))
-            );
-        }
-
         return $matches;
     }
 
-    private function get_or_build_visible_admin_page_index($entry, &$debug_info = array()) {
+    private function get_or_build_visible_admin_page_index($entry) {
         $index = $this->get_visible_admin_page_index($entry);
 
         if (! empty($index['visible_text']) && is_array($index['visible_text'])) {
-            $debug_info[] = sprintf(
-                /* translators: 1: plugin name, 2: admin page title */
-                __('Used cached rendered text index for %1$s -> %2$s.', 'hp-source-finder'),
-                isset($entry['plugin_name']) ? $entry['plugin_name'] : __('Plugin page', 'hp-source-finder'),
-                isset($entry['page_title']) ? $entry['page_title'] : (isset($entry['slug']) ? $entry['slug'] : __('Unknown page', 'hp-source-finder'))
-            );
             return $index;
         }
 
-        $debug_info[] = sprintf(
-            /* translators: 1: plugin name, 2: admin page title */
-            __('No cached rendered text index for %1$s -> %2$s, attempting live callback capture.', 'hp-source-finder'),
-            isset($entry['plugin_name']) ? $entry['plugin_name'] : __('Plugin page', 'hp-source-finder'),
-            isset($entry['page_title']) ? $entry['page_title'] : (isset($entry['slug']) ? $entry['slug'] : __('Unknown page', 'hp-source-finder'))
-        );
-
-        $built_index = $this->build_visible_admin_page_index_from_callbacks($entry, $debug_info);
+        $built_index = $this->build_visible_admin_page_index_from_callbacks($entry);
 
         if (empty($built_index['visible_text']) || ! is_array($built_index['visible_text'])) {
-            $debug_info[] = sprintf(
-                /* translators: 1: plugin name, 2: admin page title */
-                __('Live callback capture did not yield rendered text for %1$s -> %2$s.', 'hp-source-finder'),
-                isset($entry['plugin_name']) ? $entry['plugin_name'] : __('Plugin page', 'hp-source-finder'),
-                isset($entry['page_title']) ? $entry['page_title'] : (isset($entry['slug']) ? $entry['slug'] : __('Unknown page', 'hp-source-finder'))
-            );
             return array();
         }
 
@@ -1361,17 +1303,12 @@ class HP_Source_Finder_SearchEngine {
         return $built_index;
     }
 
-    private function build_visible_admin_page_index_from_callbacks($entry, &$debug_info = array()) {
+    private function build_visible_admin_page_index_from_callbacks($entry) {
         $hookname = isset($entry['hookname']) ? (string) $entry['hookname'] : '';
         $callbacks = $this->get_hook_callbacks($hookname);
         $html = '';
 
         if (empty($callbacks)) {
-            $debug_info[] = sprintf(
-                /* translators: %s: admin page hook name */
-                __('No callable admin-page hooks were found for %s.', 'hp-source-finder'),
-                $hookname !== '' ? $hookname : __('this page', 'hp-source-finder')
-            );
             return array();
         }
 
@@ -1388,11 +1325,6 @@ class HP_Source_Finder_SearchEngine {
              * before we capture callback output for search indexing.
              */
             do_action('load-' . $hookname);
-            $debug_info[] = sprintf(
-                /* translators: %s: admin page hook name */
-                __('Triggered the load hook for %s before live callback capture.', 'hp-source-finder'),
-                $hookname
-            );
         }
 
         foreach ($callbacks as $callback) {
@@ -1405,11 +1337,6 @@ class HP_Source_Finder_SearchEngine {
             try {
                 call_user_func($callback);
             } catch (Throwable $throwable) {
-                $debug_info[] = sprintf(
-                    /* translators: %s: callback error message */
-                    __('A callback could not be rendered during live capture: %s', 'hp-source-finder'),
-                    $throwable->getMessage()
-                );
                 ob_end_clean();
                 continue;
             }
@@ -1429,24 +1356,9 @@ class HP_Source_Finder_SearchEngine {
             unset($_GET['page']);
         }
 
-        if ($html === '') {
-            $debug_info[] = sprintf(
-                /* translators: 1: plugin name, 2: admin page title */
-                __('Live callback capture produced no HTML output for %1$s -> %2$s.', 'hp-source-finder'),
-                isset($entry['plugin_name']) ? $entry['plugin_name'] : __('Plugin page', 'hp-source-finder'),
-                isset($entry['page_title']) ? $entry['page_title'] : (isset($entry['slug']) ? $entry['slug'] : __('Unknown page', 'hp-source-finder'))
-            );
-        }
-
         $visible_text = $this->extract_visible_admin_page_index($html);
 
         if (empty($visible_text)) {
-            $debug_info[] = sprintf(
-                /* translators: 1: plugin name, 2: admin page title */
-                __('Rendered HTML was captured for %1$s -> %2$s, but no visible text nodes were extracted.', 'hp-source-finder'),
-                isset($entry['plugin_name']) ? $entry['plugin_name'] : __('Plugin page', 'hp-source-finder'),
-                isset($entry['page_title']) ? $entry['page_title'] : (isset($entry['slug']) ? $entry['slug'] : __('Unknown page', 'hp-source-finder'))
-            );
             return array();
         }
 
@@ -2397,7 +2309,6 @@ class HP_Source_Finder_SearchEngine {
             'admin_page_results' => array(),
             'is_settings_search' => false,
             'is_text_finder_search' => false,
-            'debug_info' => array(),
             'truncated' => false,
             'max_results' => self::MAX_RESULTS,
         );

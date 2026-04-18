@@ -242,7 +242,6 @@ class HP_Source_Finder_AdminPage {
             'is_text_finder_search' => false,
             'results_message' => '',
             'truncated_message' => '',
-            'debug_info' => array(),
         );
 
         if (! $has_submitted) {
@@ -256,7 +255,6 @@ class HP_Source_Finder_AdminPage {
         $state['admin_page_results'] = isset($search_response['admin_page_results']) ? $search_response['admin_page_results'] : array();
         $state['is_settings_search'] = ! empty($search_response['is_settings_search']);
         $state['is_text_finder_search'] = ! empty($search_response['is_text_finder_search']);
-        $state['debug_info'] = isset($search_response['debug_info']) && is_array($search_response['debug_info']) ? $search_response['debug_info'] : array();
 
         if ($search_term === '') {
             $state['results_message'] = __('Enter a keyword to search.', 'hp-source-finder');
@@ -284,7 +282,6 @@ class HP_Source_Finder_AdminPage {
         $is_text_finder_search = ! empty($state['is_text_finder_search']);
         $results_message = isset($state['results_message']) ? $state['results_message'] : '';
         $truncated_message = isset($state['truncated_message']) ? $state['truncated_message'] : '';
-        $debug_info = isset($state['debug_info']) && is_array($state['debug_info']) ? $state['debug_info'] : array();
         $total_results = count($file_results) + count($settings_results) + count($admin_page_results);
 
         ob_start();
@@ -311,17 +308,6 @@ class HP_Source_Finder_AdminPage {
                 </div>
             <?php endif; ?>
 
-            <?php if (! empty($debug_info)) : ?>
-                <div class="hp-source-finder-notice">
-                    <p><strong><?php esc_html_e('Search debug', 'hp-source-finder'); ?></strong></p>
-                    <ul>
-                        <?php foreach ($debug_info as $debug_line) : ?>
-                            <li><?php echo esc_html($debug_line); ?></li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
-            <?php endif; ?>
-
             <?php
             if ($is_settings_search) {
                 $sections = array('settings', 'admin-pages', 'files');
@@ -337,7 +323,7 @@ class HP_Source_Finder_AdminPage {
                 <?php if ($section_type === 'admin-pages' && ! empty($admin_page_results)) : ?>
                     <div class="hp-source-finder-section">
                         <h3 class="hp-source-finder-section-title">
-                            <?php echo esc_html($is_text_finder_search ? __('Text Finder: Admin Page Matches', 'hp-source-finder') : __('Admin Page Matches', 'hp-source-finder')); ?>
+                            <?php echo esc_html($is_text_finder_search ? __('Likely Admin Page References', 'hp-source-finder') : __('Admin Page Matches', 'hp-source-finder')); ?>
                         </h3>
                         <div class="hp-source-finder-settings-list">
                             <?php foreach ($admin_page_results as $admin_page_index => $admin_page_result) : ?>
@@ -451,7 +437,7 @@ class HP_Source_Finder_AdminPage {
                 <?php if ($section_type === 'settings' && ! empty($settings_results)) : ?>
                     <div class="hp-source-finder-section">
                         <h3 class="hp-source-finder-section-title">
-                            <?php echo esc_html($is_text_finder_search ? __('Text Finder: Settings & Menu Paths', 'hp-source-finder') : __('Settings & Menu Paths', 'hp-source-finder')); ?>
+                            <?php echo esc_html($is_text_finder_search ? __('Likely Settings & Menu References', 'hp-source-finder') : __('Settings & Menu Paths', 'hp-source-finder')); ?>
                         </h3>
                         <div class="hp-source-finder-settings-list">
                             <?php foreach ($settings_results as $setting_index => $setting_result) : ?>
@@ -524,7 +510,7 @@ class HP_Source_Finder_AdminPage {
                     <?php $grouped_results = $this->group_results_by_file($file_results); ?>
                     <div class="hp-source-finder-section">
                         <h3 class="hp-source-finder-section-title">
-                            <?php echo esc_html($is_text_finder_search ? __('Text Finder: File Matches', 'hp-source-finder') : __('File Matches', 'hp-source-finder')); ?>
+                            <?php echo esc_html($is_text_finder_search ? __('File & Template Matches', 'hp-source-finder') : __('File Matches', 'hp-source-finder')); ?>
                         </h3>
                         <div class="hp-source-finder-results-list">
                             <?php $file_group_index = 0; ?>
@@ -609,8 +595,8 @@ class HP_Source_Finder_AdminPage {
                     <ul>
                         <li><?php esc_html_e('switching the search scope to WordPress, Settings, or Menu Pages', 'hp-source-finder'); ?></li>
                         <li><?php esc_html_e('searching for singular and plural terms like comment/comments or breadcrumb/breadcrumbs', 'hp-source-finder'); ?></li>
-                        <li><?php esc_html_e('pasting the exact visible text you want to locate', 'hp-source-finder'); ?></li>
-                        <li><?php esc_html_e('trying a shorter phrase without punctuation', 'hp-source-finder'); ?></li>
+                        <li><?php esc_html_e('pasting the exact label, hook, setting name, or text fragment you want to locate', 'hp-source-finder'); ?></li>
+                        <li><?php esc_html_e('trying a shorter phrase without punctuation or with simpler spacing', 'hp-source-finder'); ?></li>
                     </ul>
                 </div>
             <?php elseif (! empty($settings_results) && empty($file_results)) : ?>
@@ -619,7 +605,7 @@ class HP_Source_Finder_AdminPage {
                 </div>
             <?php elseif (empty($file_results) && empty($settings_results) && empty($admin_page_results)) : ?>
                 <p class="description">
-                    <?php esc_html_e('Enter a search term and choose a filter to begin.', 'hp-source-finder'); ?>
+                    <?php esc_html_e('Enter a search term and choose a scope to begin.', 'hp-source-finder'); ?>
                 </p>
             <?php endif; ?>
         </div>

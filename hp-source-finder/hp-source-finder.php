@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP Source Finder
  * Plugin URI: https://tobi.holyprofweb.com/hp-source-finder
- * Description: Read-only finder for WordPress code, settings, menu pages, and labels.
+ * Description: Read-only finder for WordPress code, hooks, templates, settings, and some admin-page references.
  * Version: 1.0.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
