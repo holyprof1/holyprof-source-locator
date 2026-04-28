@@ -4,7 +4,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-class HP_Source_Finder_SearchEngine {
+class Holyprof_Source_Locator_SearchEngine {
     const MAX_FILE_SIZE = 262144;
     const MAX_RESULTS = 200;
     const MAX_SETTINGS_RESULTS = 25;
@@ -22,9 +22,14 @@ class HP_Source_Finder_SearchEngine {
      */
     private $captured_admin_page_html = '';
 
+    /**
+     * @var int
+     */
+    private $admin_page_capture_buffer_level = 0;
+
     public function register_admin_page_capture() {
         add_action('current_screen', array($this, 'maybe_begin_admin_page_capture'));
-        add_action('shutdown', array($this, 'finish_admin_page_capture'), 0);
+        add_action('shutdown', array($this, 'finish_admin_page_capture'), PHP_INT_MAX);
     }
 
     public function search($search_term, $filter) {
@@ -37,6 +42,7 @@ class HP_Source_Finder_SearchEngine {
 
         $search_variants = $this->get_search_variants($search_term);
         $is_settings_search = $this->is_likely_settings_search($search_term);
+        $is_code_search = $this->is_likely_code_search($search_term, $search_variants);
         $is_text_finder_search = $this->is_text_finder_search($search_term);
         $settings_results = $this->should_search_settings($filter)
             ? $this->search_settings_locations($search_term, $filter)
@@ -129,7 +135,7 @@ class HP_Source_Finder_SearchEngine {
             }
         }
 
-        $results = $this->rank_file_results($results, $search_variants, $is_settings_search, $is_text_finder_search);
+        $results = $this->rank_file_results($results, $search_variants, $is_settings_search, $is_text_finder_search, $is_code_search);
 
         return array(
             'results' => $results,
@@ -137,6 +143,7 @@ class HP_Source_Finder_SearchEngine {
             'settings_results' => $settings_results,
             'admin_page_results' => $admin_page_results,
             'is_settings_search' => $is_settings_search,
+            'is_code_search' => $is_code_search,
             'is_text_finder_search' => $is_text_finder_search,
             'truncated' => $truncated,
             'max_results' => self::MAX_RESULTS,
@@ -145,6 +152,10 @@ class HP_Source_Finder_SearchEngine {
 
     public function maybe_begin_admin_page_capture($screen) {
         if (! is_admin() || wp_doing_ajax() || ! current_user_can('manage_options')) {
+            return;
+        }
+
+        if ($this->active_admin_page_capture !== null || $this->admin_page_capture_buffer_level !== 0) {
             return;
         }
 
@@ -160,7 +171,14 @@ class HP_Source_Finder_SearchEngine {
 
         $this->active_admin_page_capture = $entry;
         $this->captured_admin_page_html = '';
-        ob_start(array($this, 'capture_admin_page_output'));
+        $buffer_level = ob_get_level();
+
+        if (! ob_start(array($this, 'capture_admin_page_output'))) {
+            $this->reset_admin_page_capture_state();
+            return;
+        }
+
+        $this->admin_page_capture_buffer_level = $buffer_level + 1;
     }
 
     public function capture_admin_page_output($buffer) {
@@ -172,30 +190,49 @@ class HP_Source_Finder_SearchEngine {
     }
 
     public function finish_admin_page_capture() {
-        if ($this->active_admin_page_capture === null || $this->captured_admin_page_html === '') {
+        if ($this->active_admin_page_capture === null && $this->admin_page_capture_buffer_level === 0) {
             return;
         }
 
-        $visible_text_index = $this->extract_visible_admin_page_index($this->captured_admin_page_html);
+        try {
+            $this->close_admin_page_capture_buffer();
 
-        if (! empty($visible_text_index)) {
-            set_transient(
-                $this->get_admin_page_index_transient_key($this->active_admin_page_capture),
-                array(
-                    'plugin_name' => isset($this->active_admin_page_capture['plugin_name']) ? $this->active_admin_page_capture['plugin_name'] : '',
-                    'page_title' => isset($this->active_admin_page_capture['page_title']) ? $this->active_admin_page_capture['page_title'] : '',
-                    'slug' => isset($this->active_admin_page_capture['slug']) ? $this->active_admin_page_capture['slug'] : '',
-                    'path' => isset($this->active_admin_page_capture['path']) ? $this->active_admin_page_capture['path'] : '',
-                    'url' => isset($this->active_admin_page_capture['url']) ? $this->active_admin_page_capture['url'] : '',
-                    'captured_at' => time(),
-                    'visible_text' => $visible_text_index,
-                ),
-                self::ADMIN_PAGE_INDEX_TTL
-            );
+            if ($this->active_admin_page_capture === null || $this->captured_admin_page_html === '') {
+                return;
+            }
+
+            $visible_text_index = $this->extract_visible_admin_page_index($this->captured_admin_page_html);
+
+            if (! empty($visible_text_index)) {
+                set_transient(
+                    $this->get_admin_page_index_transient_key($this->active_admin_page_capture),
+                    array(
+                        'plugin_name' => isset($this->active_admin_page_capture['plugin_name']) ? $this->active_admin_page_capture['plugin_name'] : '',
+                        'page_title' => isset($this->active_admin_page_capture['page_title']) ? $this->active_admin_page_capture['page_title'] : '',
+                        'slug' => isset($this->active_admin_page_capture['slug']) ? $this->active_admin_page_capture['slug'] : '',
+                        'path' => isset($this->active_admin_page_capture['path']) ? $this->active_admin_page_capture['path'] : '',
+                        'url' => isset($this->active_admin_page_capture['url']) ? $this->active_admin_page_capture['url'] : '',
+                        'captured_at' => time(),
+                        'visible_text' => $visible_text_index,
+                    ),
+                    self::ADMIN_PAGE_INDEX_TTL
+                );
+            }
+        } finally {
+            $this->reset_admin_page_capture_state();
         }
+    }
 
+    private function close_admin_page_capture_buffer() {
+        if ($this->admin_page_capture_buffer_level !== 0 && ob_get_level() === $this->admin_page_capture_buffer_level) {
+            ob_end_flush();
+        }
+    }
+
+    private function reset_admin_page_capture_state() {
         $this->active_admin_page_capture = null;
         $this->captured_admin_page_html = '';
+        $this->admin_page_capture_buffer_level = 0;
     }
 
     private function search_file($file_path, $search_variants, $root) {
@@ -215,6 +252,7 @@ class HP_Source_Finder_SearchEngine {
                 'file_path' => $this->get_relative_path($file_path, $root),
                 'source_label' => $root['label'],
                 'source_type' => $this->get_file_source_type($file_path, $root),
+                'source_category' => isset($root['category']) ? (string) $root['category'] : '',
                 'line_number' => $line_number,
                 'snippet' => trim($line),
             );
@@ -279,12 +317,12 @@ class HP_Source_Finder_SearchEngine {
     private function get_search_roots($scope) {
         $roots = array(
             array(
-                'path' => untrailingslashit(HP_SOURCE_FINDER_PATH),
-                'label' => __('HP Source Finder Plugin', 'hp-source-finder'),
-                'slug' => 'hp-source-finder',
+                'path' => untrailingslashit(HOLYPROF_SOURCE_LOCATOR_PATH),
+                'label' => __('Holyprof Source Locator Plugin', 'holyprof-source-locator'),
+                'slug' => 'holyprof-source-locator',
                 'type' => 'directory',
                 'category' => 'plugin',
-                'source_type' => __('Plugin', 'hp-source-finder'),
+                'source_type' => __('Plugin', 'holyprof-source-locator'),
             ),
         );
 
@@ -294,22 +332,22 @@ class HP_Source_Finder_SearchEngine {
         if ($stylesheet_directory !== '') {
             $roots[] = array(
                 'path' => $stylesheet_directory,
-                'label' => __('Active Theme', 'hp-source-finder'),
+                'label' => __('Active Theme', 'holyprof-source-locator'),
                 'slug' => wp_basename($stylesheet_directory),
                 'type' => 'directory',
                 'category' => 'theme',
-                'source_type' => __('Theme', 'hp-source-finder'),
+                'source_type' => __('Theme', 'holyprof-source-locator'),
             );
         }
 
         if ($template_directory !== '' && $template_directory !== $stylesheet_directory) {
             $roots[] = array(
                 'path' => $template_directory,
-                'label' => __('Parent Theme', 'hp-source-finder'),
+                'label' => __('Parent Theme', 'holyprof-source-locator'),
                 'slug' => wp_basename($template_directory),
                 'type' => 'directory',
                 'category' => 'theme',
-                'source_type' => __('Theme', 'hp-source-finder'),
+                'source_type' => __('Theme', 'holyprof-source-locator'),
             );
         }
 
@@ -369,13 +407,13 @@ class HP_Source_Finder_SearchEngine {
                 'path' => $plugin_directory,
                 'label' => sprintf(
                     /* translators: %s: plugin directory name */
-                    __('Active Plugin: %s', 'hp-source-finder'),
+                    __('Active Plugin: %s', 'holyprof-source-locator'),
                     $plugin_name
                 ),
                 'slug' => $plugin_name,
                 'type' => 'directory',
                 'category' => 'plugin',
-                'source_type' => __('Plugin', 'hp-source-finder'),
+                'source_type' => __('Plugin', 'holyprof-source-locator'),
             );
         }
 
@@ -389,13 +427,13 @@ class HP_Source_Finder_SearchEngine {
             'path' => $plugin_path,
             'label' => sprintf(
                 /* translators: %s: plugin name */
-                __('Active Plugin: %s', 'hp-source-finder'),
+                __('Active Plugin: %s', 'holyprof-source-locator'),
                 $plugin_name
             ),
             'slug' => $plugin_name,
             'type' => 'file',
             'category' => 'plugin',
-            'source_type' => __('Plugin', 'hp-source-finder'),
+            'source_type' => __('Plugin', 'holyprof-source-locator'),
         );
     }
 
@@ -592,12 +630,12 @@ class HP_Source_Finder_SearchEngine {
         return $score;
     }
 
-    private function rank_file_results($results, $search_variants, $is_settings_search, $is_text_finder_search) {
+    private function rank_file_results($results, $search_variants, $is_settings_search, $is_text_finder_search, $is_code_search) {
         usort(
             $results,
-            function ($left, $right) use ($search_variants, $is_settings_search, $is_text_finder_search) {
-                $left_score = $this->get_file_result_score($left, $search_variants, $is_settings_search, $is_text_finder_search);
-                $right_score = $this->get_file_result_score($right, $search_variants, $is_settings_search, $is_text_finder_search);
+            function ($left, $right) use ($search_variants, $is_settings_search, $is_text_finder_search, $is_code_search) {
+                $left_score = $this->get_file_result_score($left, $search_variants, $is_settings_search, $is_text_finder_search, $is_code_search);
+                $right_score = $this->get_file_result_score($right, $search_variants, $is_settings_search, $is_text_finder_search, $is_code_search);
 
                 if ($left_score === $right_score) {
                     return ($left['line_number'] ?? 0) <=> ($right['line_number'] ?? 0);
@@ -631,11 +669,13 @@ class HP_Source_Finder_SearchEngine {
         return $results;
     }
 
-    private function get_file_result_score($result, $search_variants, $is_settings_search, $is_text_finder_search) {
+    private function get_file_result_score($result, $search_variants, $is_settings_search, $is_text_finder_search, $is_code_search) {
         $score = 0;
         $snippet = $this->normalize_search_value(isset($result['snippet']) ? $result['snippet'] : '');
         $file_path = $this->normalize_search_value(isset($result['file_path']) ? $result['file_path'] : '');
         $source_type = $this->normalize_search_value(isset($result['source_type']) ? $result['source_type'] : '');
+        $source_label = $this->normalize_search_value(isset($result['source_label']) ? $result['source_label'] : '');
+        $source_category = $this->normalize_search_value(isset($result['source_category']) ? $result['source_category'] : '');
 
         foreach ($search_variants as $variant) {
             if ($variant === '') {
@@ -663,14 +703,17 @@ class HP_Source_Finder_SearchEngine {
             }
         }
 
+        $score += $this->get_file_location_boost($file_path, $source_label, $source_type, $source_category, $is_code_search);
+        $score += $this->get_php_code_pattern_score($snippet, $file_path, $search_variants, $is_code_search);
+
         if ($is_text_finder_search) {
             $score += 20;
 
-            if ($source_type === $this->normalize_search_value(__('Template', 'hp-source-finder'))) {
+            if ($source_type === $this->normalize_search_value(__('Template', 'holyprof-source-locator'))) {
                 $score += 60;
-            } elseif ($source_type === $this->normalize_search_value(__('Theme', 'hp-source-finder'))) {
+            } elseif ($source_type === $this->normalize_search_value(__('Theme', 'holyprof-source-locator'))) {
                 $score += 35;
-            } elseif ($source_type === $this->normalize_search_value(__('Plugin', 'hp-source-finder'))) {
+            } elseif ($source_type === $this->normalize_search_value(__('Plugin', 'holyprof-source-locator'))) {
                 $score += 25;
             }
         }
@@ -775,6 +818,10 @@ class HP_Source_Finder_SearchEngine {
             $score += 30;
         }
 
+        if ($this->is_likely_code_search(implode(' ', $variants), $variants)) {
+            $score -= 160;
+        }
+
         return $score;
     }
 
@@ -803,9 +850,9 @@ class HP_Source_Finder_SearchEngine {
                 'hookname' => $this->get_admin_page_hookname($slug, ''),
                 'path' => $path,
                 'url' => $this->build_admin_url($slug),
-                'source' => __('Admin Menu', 'hp-source-finder'),
-                'match_type' => __('Menu page', 'hp-source-finder'),
-                'source_type' => $this->get_settings_source_type($slug, $path, __('Admin Menu', 'hp-source-finder')),
+                'source' => __('Admin Menu', 'holyprof-source-locator'),
+                'match_type' => __('Menu page', 'holyprof-source-locator'),
+                'source_type' => $this->get_settings_source_type($slug, $path, __('Admin Menu', 'holyprof-source-locator')),
                 'is_clickable' => true,
             );
 
@@ -834,9 +881,9 @@ class HP_Source_Finder_SearchEngine {
                     'hookname' => $this->get_admin_page_hookname($slug, (string) $parent_slug),
                     'path' => trim($parent_title . ' > ' . $menu_title),
                     'url' => $this->build_admin_url($slug),
-                    'source' => __('Admin Submenu', 'hp-source-finder'),
-                    'match_type' => __('Submenu page', 'hp-source-finder'),
-                    'source_type' => $this->get_settings_source_type($slug, trim($parent_title . ' > ' . $menu_title), __('Admin Submenu', 'hp-source-finder')),
+                    'source' => __('Admin Submenu', 'holyprof-source-locator'),
+                    'match_type' => __('Submenu page', 'holyprof-source-locator'),
+                    'source_type' => $this->get_settings_source_type($slug, trim($parent_title . ' > ' . $menu_title), __('Admin Submenu', 'holyprof-source-locator')),
                     'is_clickable' => true,
                 );
             }
@@ -898,8 +945,8 @@ class HP_Source_Finder_SearchEngine {
                             'slug' => $page_slug,
                             'path' => $this->build_registered_setting_path($page_data, $section_title, $field_title),
                             'url' => isset($page_data['url']) ? $page_data['url'] : $this->build_admin_url($page_slug),
-                            'source' => __('Registered Settings Field', 'hp-source-finder'),
-                            'match_type' => __('Settings field', 'hp-source-finder'),
+                            'source' => __('Registered Settings Field', 'holyprof-source-locator'),
+                            'match_type' => __('Settings field', 'holyprof-source-locator'),
                             'source_type' => $this->get_registered_settings_source_type($page_slug, $page_data),
                             'is_clickable' => ! empty($page_data['url']) || $this->build_admin_url($page_slug) !== '',
                         );
@@ -915,8 +962,8 @@ class HP_Source_Finder_SearchEngine {
                         'slug' => $page_slug,
                         'path' => $this->build_registered_setting_path($page_data, $section_title, ''),
                         'url' => isset($page_data['url']) ? $page_data['url'] : $this->build_admin_url($page_slug),
-                        'source' => __('Registered Settings Section', 'hp-source-finder'),
-                        'match_type' => __('Settings section', 'hp-source-finder'),
+                        'source' => __('Registered Settings Section', 'holyprof-source-locator'),
+                        'match_type' => __('Settings section', 'holyprof-source-locator'),
                         'source_type' => $this->get_registered_settings_source_type($page_slug, $page_data),
                         'is_clickable' => ! empty($page_data['url']) || $this->build_admin_url($page_slug) !== '',
                     );
@@ -939,8 +986,8 @@ class HP_Source_Finder_SearchEngine {
                 'slug' => $group,
                 'path' => $this->build_registered_setting_path($page_data, '', $setting_name),
                 'url' => isset($page_data['url']) ? $page_data['url'] : $this->build_admin_url($group),
-                'source' => __('Registered Setting', 'hp-source-finder'),
-                'match_type' => __('Setting name', 'hp-source-finder'),
+                'source' => __('Registered Setting', 'holyprof-source-locator'),
+                'match_type' => __('Setting name', 'holyprof-source-locator'),
                 'source_type' => $this->get_registered_settings_source_type($group, $page_data),
                 'is_clickable' => ! empty($page_data['url']) || $this->build_admin_url($group) !== '',
             );
@@ -1007,9 +1054,9 @@ class HP_Source_Finder_SearchEngine {
             'slug' => isset($entry['slug']) ? $entry['slug'] : '',
             'path' => isset($entry['path']) ? $entry['path'] : '',
             'url' => isset($entry['url']) ? $entry['url'] : '',
-            'source' => __('Plugin Admin Page', 'hp-source-finder'),
-            'match_type' => __('Admin page match', 'hp-source-finder'),
-            'source_type' => __('Plugin', 'hp-source-finder'),
+            'source' => __('Plugin Admin Page', 'holyprof-source-locator'),
+            'match_type' => __('Admin page match', 'holyprof-source-locator'),
+            'source_type' => __('Plugin', 'holyprof-source-locator'),
             'plugin_name' => isset($entry['plugin_name']) ? $entry['plugin_name'] : '',
             'plugin_slug' => isset($entry['plugin_slug']) ? $entry['plugin_slug'] : '',
             'visible_text_matches' => $visible_text_matches,
@@ -1269,7 +1316,7 @@ class HP_Source_Finder_SearchEngine {
             }
 
             $matches[] = array(
-                'kind' => isset($item['kind']) ? (string) $item['kind'] : __('Visible text', 'hp-source-finder'),
+                'kind' => isset($item['kind']) ? (string) $item['kind'] : __('Visible text', 'holyprof-source-locator'),
                 'snippet' => $snippet,
             );
 
@@ -1313,47 +1360,23 @@ class HP_Source_Finder_SearchEngine {
         }
 
         $previous_plugin_page = isset($GLOBALS['plugin_page']) ? $GLOBALS['plugin_page'] : null;
-        $previous_get_page = isset($_GET['page']) ? $_GET['page'] : null;
-        $has_get_page = isset($_GET['page']);
 
         $GLOBALS['plugin_page'] = isset($entry['slug']) ? (string) $entry['slug'] : '';
-        $_GET['page'] = isset($entry['slug']) ? (string) $entry['slug'] : '';
 
         if ($hookname !== '') {
             /**
-             * Prime plugin admin pages that attach setup logic to the page load hook
-             * before we capture callback output for search indexing.
+             * Prime plugin admin pages by invoking the callbacks already registered
+             * on the related core load hook before we capture page output.
              */
-            do_action('load-' . $hookname);
+            $this->invoke_registered_hook_callbacks('load-' . sanitize_key($hookname));
         }
 
-        foreach ($callbacks as $callback) {
-            if (! is_callable($callback)) {
-                continue;
-            }
-
-            ob_start();
-
-            try {
-                call_user_func($callback);
-            } catch (Throwable $throwable) {
-                ob_end_clean();
-                continue;
-            }
-
-            $html .= (string) ob_get_clean();
-        }
+        $html .= $this->capture_callback_output($callbacks);
 
         if ($previous_plugin_page === null) {
             unset($GLOBALS['plugin_page']);
         } else {
             $GLOBALS['plugin_page'] = $previous_plugin_page;
-        }
-
-        if ($has_get_page) {
-            $_GET['page'] = $previous_get_page;
-        } else {
-            unset($_GET['page']);
         }
 
         $visible_text = $this->extract_visible_admin_page_index($html);
@@ -1425,6 +1448,39 @@ class HP_Source_Finder_SearchEngine {
         }
 
         return strtoupper(sanitize_text_field(wp_unslash($_SERVER['REQUEST_METHOD'])));
+    }
+
+    private function capture_callback_output($callbacks) {
+        $output = '';
+
+        foreach ((array) $callbacks as $callback) {
+            if (! is_callable($callback)) {
+                continue;
+            }
+
+            ob_start();
+
+            try {
+                call_user_func($callback);
+            } catch (Throwable $throwable) {
+                ob_end_clean();
+                continue;
+            }
+
+            $output .= (string) ob_get_clean();
+        }
+
+        return $output;
+    }
+
+    private function invoke_registered_hook_callbacks($hookname) {
+        $hookname = (string) $hookname;
+
+        if ($hookname === '') {
+            return;
+        }
+
+        $this->capture_callback_output($this->get_hook_callbacks($hookname));
     }
 
     private function extract_visible_admin_page_index($html) {
@@ -1532,8 +1588,8 @@ class HP_Source_Finder_SearchEngine {
                 $seen,
                 $text,
                 in_array($tag, array('h1', 'h2', 'h3', 'h4', 'h5', 'h6'), true)
-                    ? __('Heading', 'hp-source-finder')
-                    : __('Visible text', 'hp-source-finder')
+                    ? __('Heading', 'holyprof-source-locator')
+                    : __('Visible text', 'holyprof-source-locator')
             );
 
             if (count($items) >= 120) {
@@ -1600,18 +1656,18 @@ class HP_Source_Finder_SearchEngine {
         $class_name = strtolower((string) $node->getAttribute('class'));
 
         if (in_array($tag, array('h1', 'h2', 'h3', 'h4', 'h5', 'h6'), true)) {
-            return __('Heading', 'hp-source-finder');
+            return __('Heading', 'holyprof-source-locator');
         }
 
         if (in_array($tag, array('label', 'legend', 'th'), true) || strpos($class_name, 'label') !== false) {
-            return __('Label', 'hp-source-finder');
+            return __('Label', 'holyprof-source-locator');
         }
 
         if (strpos($class_name, 'description') !== false || strpos($class_name, 'notice') !== false || strpos($class_name, 'help') !== false) {
-            return __('Help text', 'hp-source-finder');
+            return __('Help text', 'holyprof-source-locator');
         }
 
-        return __('Visible text', 'hp-source-finder');
+        return __('Visible text', 'holyprof-source-locator');
     }
 
     private function clean_visible_text_snippet($text) {
@@ -1710,59 +1766,59 @@ class HP_Source_Finder_SearchEngine {
         return array(
             'discussion|comments|default post settings' => array(
                 array(
-                    'title' => __('Discussion Settings', 'hp-source-finder'),
-                    'menu_title' => __('Discussion', 'hp-source-finder'),
-                    'page_title' => __('Discussion Settings', 'hp-source-finder'),
+                    'title' => __('Discussion Settings', 'holyprof-source-locator'),
+                    'menu_title' => __('Discussion', 'holyprof-source-locator'),
+                    'page_title' => __('Discussion Settings', 'holyprof-source-locator'),
                     'slug' => 'options-discussion.php',
-                    'path' => __('Settings > Discussion', 'hp-source-finder'),
+                    'path' => __('Settings > Discussion', 'holyprof-source-locator'),
                     'url' => admin_url('options-discussion.php'),
-                    'source' => __('Likely WordPress Setting', 'hp-source-finder'),
-                    'match_type' => __('Suggested location', 'hp-source-finder'),
-                    'note' => __('Includes comment defaults and default post settings.', 'hp-source-finder'),
-                    'source_type' => __('WordPress Setting', 'hp-source-finder'),
+                    'source' => __('Likely WordPress Setting', 'holyprof-source-locator'),
+                    'match_type' => __('Suggested location', 'holyprof-source-locator'),
+                    'note' => __('Includes comment defaults and default post settings.', 'holyprof-source-locator'),
+                    'source_type' => __('WordPress Setting', 'holyprof-source-locator'),
                     'is_clickable' => true,
                 ),
             ),
             'reading' => array(
                 array(
-                    'title' => __('Reading Settings', 'hp-source-finder'),
-                    'menu_title' => __('Reading', 'hp-source-finder'),
-                    'page_title' => __('Reading Settings', 'hp-source-finder'),
+                    'title' => __('Reading Settings', 'holyprof-source-locator'),
+                    'menu_title' => __('Reading', 'holyprof-source-locator'),
+                    'page_title' => __('Reading Settings', 'holyprof-source-locator'),
                     'slug' => 'options-reading.php',
-                    'path' => __('Settings > Reading', 'hp-source-finder'),
+                    'path' => __('Settings > Reading', 'holyprof-source-locator'),
                     'url' => admin_url('options-reading.php'),
-                    'source' => __('Likely WordPress Setting', 'hp-source-finder'),
-                    'match_type' => __('Suggested location', 'hp-source-finder'),
-                    'source_type' => __('WordPress Setting', 'hp-source-finder'),
+                    'source' => __('Likely WordPress Setting', 'holyprof-source-locator'),
+                    'match_type' => __('Suggested location', 'holyprof-source-locator'),
+                    'source_type' => __('WordPress Setting', 'holyprof-source-locator'),
                     'is_clickable' => true,
                 ),
             ),
             'permalink|permalinks' => array(
                 array(
-                    'title' => __('Permalink Settings', 'hp-source-finder'),
-                    'menu_title' => __('Permalinks', 'hp-source-finder'),
-                    'page_title' => __('Permalink Settings', 'hp-source-finder'),
+                    'title' => __('Permalink Settings', 'holyprof-source-locator'),
+                    'menu_title' => __('Permalinks', 'holyprof-source-locator'),
+                    'page_title' => __('Permalink Settings', 'holyprof-source-locator'),
                     'slug' => 'options-permalink.php',
-                    'path' => __('Settings > Permalinks', 'hp-source-finder'),
+                    'path' => __('Settings > Permalinks', 'holyprof-source-locator'),
                     'url' => admin_url('options-permalink.php'),
-                    'source' => __('Likely WordPress Setting', 'hp-source-finder'),
-                    'match_type' => __('Suggested location', 'hp-source-finder'),
-                    'source_type' => __('WordPress Setting', 'hp-source-finder'),
+                    'source' => __('Likely WordPress Setting', 'holyprof-source-locator'),
+                    'match_type' => __('Suggested location', 'holyprof-source-locator'),
+                    'source_type' => __('WordPress Setting', 'holyprof-source-locator'),
                     'is_clickable' => true,
                 ),
             ),
             'breadcrumb|breadcrumbs' => array(
                 array(
-                    'title' => __('Breadcrumb Settings', 'hp-source-finder'),
-                    'menu_title' => __('Breadcrumbs', 'hp-source-finder'),
-                    'page_title' => __('Breadcrumb Settings', 'hp-source-finder'),
+                    'title' => __('Breadcrumb Settings', 'holyprof-source-locator'),
+                    'menu_title' => __('Breadcrumbs', 'holyprof-source-locator'),
+                    'page_title' => __('Breadcrumb Settings', 'holyprof-source-locator'),
                     'slug' => 'breadcrumb',
-                    'path' => __('Usually provided by an SEO or theme settings page', 'hp-source-finder'),
+                    'path' => __('Usually provided by an SEO or theme settings page', 'holyprof-source-locator'),
                     'url' => '',
-                    'source' => __('Likely Plugin or Theme Setting', 'hp-source-finder'),
-                    'match_type' => __('Suggested location', 'hp-source-finder'),
-                    'note' => __('Check SEO, theme options, or customizer-related plugin settings.', 'hp-source-finder'),
-                    'source_type' => __('Menu Page', 'hp-source-finder'),
+                    'source' => __('Likely Plugin or Theme Setting', 'holyprof-source-locator'),
+                    'match_type' => __('Suggested location', 'holyprof-source-locator'),
+                    'note' => __('Check SEO, theme options, or customizer-related plugin settings.', 'holyprof-source-locator'),
+                    'source_type' => __('Menu Page', 'holyprof-source-locator'),
                     'is_clickable' => false,
                 ),
             ),
@@ -1777,6 +1833,61 @@ class HP_Source_Finder_SearchEngine {
                 if (strpos($variant, $term) !== false) {
                     return true;
                 }
+            }
+        }
+
+        return false;
+    }
+
+    private function is_likely_code_search($search_term, $variants = array()) {
+        $normalized = $this->normalize_search_value($search_term);
+        $variants = ! empty($variants) ? $variants : $this->get_search_variants($search_term);
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        $code_fragments = array(
+            'functions.php',
+            'function ',
+            'class ',
+            'add_action',
+            'add_filter',
+            'do_action',
+            'apply_filters',
+            'add_shortcode',
+            'shortcode',
+            'hook',
+            'callback',
+            'template',
+            'functions',
+            'js',
+            'css',
+            'php',
+            '::',
+            '->',
+            '$',
+            '__(',
+            'esc_html',
+        );
+
+        foreach ($code_fragments as $fragment) {
+            if (strpos($normalized, $this->normalize_search_value($fragment)) !== false) {
+                return true;
+            }
+        }
+
+        if (preg_match('/[a-z0-9_:-]+\/[a-z0-9_.-]+/i', $search_term)) {
+            return true;
+        }
+
+        if (preg_match('/[a-z0-9_]+(?:_[a-z0-9_]+)+/i', $search_term)) {
+            return true;
+        }
+
+        foreach ($variants as $variant) {
+            if ($variant !== '' && preg_match('/^[a-z0-9_:-]{3,}$/i', $variant) && strpos($variant, ' ') === false) {
+                return true;
             }
         }
 
@@ -1868,17 +1979,17 @@ class HP_Source_Finder_SearchEngine {
                     $source = isset($result['source']) ? $this->normalize_search_value($result['source']) : '';
 
                     if ($scope === 'wordpress') {
-                        return $source_type === $this->normalize_search_value(__('WordPress Setting', 'hp-source-finder'))
+                        return $source_type === $this->normalize_search_value(__('WordPress Setting', 'holyprof-source-locator'))
                             || $this->is_core_settings_slug(isset($result['slug']) ? (string) $result['slug'] : '');
                     }
 
                     if ($scope === 'settings') {
                         return strpos($source, 'setting') !== false
-                            || $source_type === $this->normalize_search_value(__('WordPress Setting', 'hp-source-finder'));
+                            || $source_type === $this->normalize_search_value(__('WordPress Setting', 'holyprof-source-locator'));
                     }
 
                     if ($scope === 'menu-pages') {
-                        return $source_type === $this->normalize_search_value(__('Menu Page', 'hp-source-finder'));
+                        return $source_type === $this->normalize_search_value(__('Menu Page', 'holyprof-source-locator'));
                     }
 
                     return true;
@@ -1950,12 +2061,95 @@ class HP_Source_Finder_SearchEngine {
         return strlen($normalized) >= 12;
     }
 
-    private function get_file_source_type($file_path, $root) {
-        if ($this->is_template_file($file_path)) {
-            return __('Template', 'hp-source-finder');
+    private function get_file_location_boost($file_path, $source_label, $source_type, $source_category, $is_code_search) {
+        $score = 0;
+        $file_name = wp_basename($file_path);
+
+        if ($file_name === 'functions.php') {
+            $score += 260;
         }
 
-        return isset($root['source_type']) ? $root['source_type'] : __('Plugin', 'hp-source-finder');
+        if ($this->is_template_file($file_path)) {
+            $score += 120;
+        }
+
+        if ($source_label === $this->normalize_search_value(__('Active Theme', 'holyprof-source-locator'))) {
+            $score += 120;
+        } elseif ($source_label === $this->normalize_search_value(__('Parent Theme', 'holyprof-source-locator'))) {
+            $score += 70;
+        }
+
+        if ($source_type === $this->normalize_search_value(__('Plugin', 'holyprof-source-locator')) || $source_category === 'plugin') {
+            $score += 80;
+        }
+
+        if ($source_type === $this->normalize_search_value(__('Theme', 'holyprof-source-locator')) || $source_category === 'theme') {
+            $score += 90;
+        }
+
+        if ($is_code_search) {
+            $score += 40;
+        }
+
+        return $score;
+    }
+
+    private function get_php_code_pattern_score($snippet, $file_path, $variants, $is_code_search) {
+        $score = 0;
+        $file_extension = strtolower((string) pathinfo($file_path, PATHINFO_EXTENSION));
+
+        if ($file_extension !== 'php' && ! $is_code_search) {
+            return $score;
+        }
+
+        foreach ($variants as $variant) {
+            $identifier = sanitize_key(str_replace(array(':', '-'), '_', (string) $variant));
+
+            if ($identifier === '' || strlen($identifier) < 2) {
+                continue;
+            }
+
+            $quoted_variant = preg_quote((string) $variant, '/');
+            $quoted_identifier = preg_quote($identifier, '/');
+
+            if (preg_match('/\bfunction\s+' . $quoted_identifier . '\s*\(/i', $snippet)) {
+                $score += 320;
+            }
+
+            if (preg_match('/\bclass\s+' . $quoted_identifier . '\b/i', $snippet)) {
+                $score += 300;
+            }
+
+            if (preg_match('/\badd_(?:action|filter)\s*\(\s*[\'"]' . $quoted_variant . '[\'"]/i', $snippet)) {
+                $score += 280;
+            }
+
+            if (preg_match('/\b(?:do_action|apply_filters)\s*\(\s*[\'"]' . $quoted_variant . '[\'"]/i', $snippet)) {
+                $score += 280;
+            }
+
+            if (preg_match('/\badd_(?:action|filter)\s*\([^,\n]+,\s*(?:array\s*\([^)]*[\'"]' . $quoted_identifier . '[\'"]|[\'"]' . $quoted_identifier . '[\'"])/i', $snippet)) {
+                $score += 260;
+            }
+
+            if (preg_match('/\badd_shortcode\s*\(\s*[\'"]' . $quoted_variant . '[\'"]/i', $snippet)) {
+                $score += 280;
+            }
+
+            if (preg_match('/[\'"]' . $quoted_variant . '[\'"]\s*=>/i', $snippet)) {
+                $score += 80;
+            }
+        }
+
+        return $score;
+    }
+
+    private function get_file_source_type($file_path, $root) {
+        if ($this->is_template_file($file_path)) {
+            return __('Template', 'holyprof-source-locator');
+        }
+
+        return isset($root['source_type']) ? $root['source_type'] : __('Plugin', 'holyprof-source-locator');
     }
 
     private function is_template_file($file_path) {
@@ -1979,18 +2173,18 @@ class HP_Source_Finder_SearchEngine {
         $source = $this->normalize_search_value($source);
 
         if ($this->is_core_settings_slug($slug)) {
-            return __('WordPress Setting', 'hp-source-finder');
+            return __('WordPress Setting', 'holyprof-source-locator');
         }
 
         if (strpos($source, 'menu') !== false) {
-            return __('Menu Page', 'hp-source-finder');
+            return __('Menu Page', 'holyprof-source-locator');
         }
 
         if (strpos($path, 'appearance') !== false || strpos($path, 'theme') !== false) {
-            return __('Theme', 'hp-source-finder');
+            return __('Theme', 'holyprof-source-locator');
         }
 
-        return __('Menu Page', 'hp-source-finder');
+        return __('Menu Page', 'holyprof-source-locator');
     }
 
     private function get_registered_settings_source_type($slug, $page_data) {
@@ -1998,14 +2192,14 @@ class HP_Source_Finder_SearchEngine {
         $path = isset($page_data['path']) ? (string) $page_data['path'] : '';
 
         if ($this->is_core_settings_slug($slug) || in_array($slug, array('general', 'writing', 'reading', 'discussion', 'media', 'permalink', 'privacy'), true)) {
-            return __('WordPress Setting', 'hp-source-finder');
+            return __('WordPress Setting', 'holyprof-source-locator');
         }
 
         if (strpos($this->normalize_search_value($path), 'appearance') !== false || strpos($this->normalize_search_value($path), 'theme') !== false) {
-            return __('Theme', 'hp-source-finder');
+            return __('Theme', 'holyprof-source-locator');
         }
 
-        return __('Plugin', 'hp-source-finder');
+        return __('Plugin', 'holyprof-source-locator');
     }
 
     private function unique_settings_results($results) {
@@ -2308,6 +2502,7 @@ class HP_Source_Finder_SearchEngine {
             'settings_results' => array(),
             'admin_page_results' => array(),
             'is_settings_search' => false,
+            'is_code_search' => false,
             'is_text_finder_search' => false,
             'truncated' => false,
             'max_results' => self::MAX_RESULTS,

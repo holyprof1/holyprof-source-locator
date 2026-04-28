@@ -1,9 +1,9 @@
 (function () {
     'use strict';
 
-    var config = window.hpSourceFinderAdmin || {};
-    var form = document.getElementById('hp-source-finder-form');
-    var resultsContainer = document.getElementById('hp-source-finder-results');
+    var config = window.holyprofSourceLocatorAdmin || {};
+    var form = document.getElementById('holyprof-source-locator-form');
+    var resultsContainer = document.getElementById('holyprof-source-locator-results');
     var searchInput = document.getElementById('wsf-search');
 
     if (!form || !resultsContainer || !config.ajaxUrl || !config.nonce) {
@@ -15,7 +15,7 @@
     }
 
     resultsContainer.addEventListener('click', function (event) {
-        var button = event.target.closest('.hp-source-finder-copy-path');
+        var button = event.target.closest('.holyprof-source-locator-copy-path');
         var textToCopy;
 
         if (!button) {
@@ -57,9 +57,9 @@
 
         resultsContainer.classList.add('is-loading');
         resultsContainer.innerHTML = [
-            '<div class="hp-source-finder-results">',
+            '<div class="holyprof-source-locator-results">',
             '<h2>Results</h2>',
-            '<div class="hp-source-finder-notice"><p>',
+            '<div class="holyprof-source-locator-notice"><p>',
             escapeHtml(config.messages.loading || 'Searching files...'),
             '</p></div>',
             '</div>'
@@ -82,9 +82,9 @@
             }
         }).catch(function () {
             resultsContainer.innerHTML = [
-                '<div class="hp-source-finder-results">',
+                '<div class="holyprof-source-locator-results">',
                 '<h2>Results</h2>',
-                '<div class="hp-source-finder-notice"><p>',
+                '<div class="holyprof-source-locator-notice"><p>',
                 escapeHtml(config.messages.error || 'Something went wrong while searching. Please try again.'),
                 '</p></div>',
                 '</div>'
