@@ -2,6 +2,13 @@
     max-width: 960px;
 }
 
+.holyprof-source-locator-intro {
+    max-width: 860px;
+    margin: 10px 0 0;
+    color: #50575e;
+    font-size: 14px;
+}
+
 .holyprof-source-locator-form {
     margin-top: 20px;
 }
@@ -11,10 +18,11 @@
     flex-wrap: wrap;
     gap: 12px;
     align-items: end;
-    padding: 16px;
+    padding: 18px;
     background: #fff;
     border: 1px solid #dcdcde;
-    border-radius: 6px;
+    border-radius: 10px;
+    box-shadow: 0 10px 24px rgba(18, 43, 70, 0.04);
 }
 
 .holyprof-source-locator-field {
@@ -40,12 +48,39 @@
     padding: 0 18px;
 }
 
+.holyprof-source-locator-search-examples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 12px;
+    color: #50575e;
+}
+
+.holyprof-source-locator-search-examples strong {
+    color: #1d2327;
+}
+
+.holyprof-source-locator-search-examples span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid #dcdcde;
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    color: #0a4b78;
+}
+
 .holyprof-source-locator-results {
     margin-top: 20px;
-    padding: 20px;
+    padding: 22px;
     background: #fff;
     border: 1px solid #dcdcde;
-    border-radius: 6px;
+    border-radius: 10px;
+    box-shadow: 0 10px 24px rgba(18, 43, 70, 0.04);
 }
 
 .holyprof-source-locator-results h2 {
@@ -66,14 +101,15 @@
 
 .holyprof-source-locator-section-title {
     margin: 0 0 12px;
-    font-size: 14px;
+    font-size: 15px;
 }
 
 .holyprof-source-locator-notice {
-    padding: 12px 14px;
+    padding: 14px 16px;
     border-left: 4px solid #2271b1;
     background: #f6f7f7;
     margin-bottom: 16px;
+    border-radius: 6px;
 }
 
 .holyprof-source-locator-notice-warning {
@@ -93,15 +129,16 @@
 
 .holyprof-source-locator-setting-item {
     border: 1px solid #dcdcde;
-    border-radius: 8px;
+    border-radius: 10px;
     background: #fcfcfc;
     overflow: hidden;
+    box-shadow: 0 8px 18px rgba(18, 43, 70, 0.03);
 }
 
 .holyprof-source-locator-setting-item.is-best-match,
 .holyprof-source-locator-result-group.is-best-match {
-    border-color: #8c8f94;
-    box-shadow: 0 0 0 2px #f0f6fc;
+    border-color: #2271b1;
+    box-shadow: 0 0 0 2px #e8f3ff, 0 12px 26px rgba(18, 43, 70, 0.08);
 }
 
 .holyprof-source-locator-setting-header {
@@ -109,13 +146,13 @@
     flex-wrap: wrap;
     justify-content: space-between;
     gap: 12px 20px;
-    padding: 16px 18px;
+    padding: 18px 20px;
     background: #fff;
     border-bottom: 1px solid #e2e4e7;
 }
 
 .holyprof-source-locator-setting-meta {
-    padding: 14px 18px;
+    padding: 16px 20px;
     background: #fcfcfc;
 }
 
@@ -144,9 +181,9 @@
 
 .holyprof-source-locator-helper-tips {
     margin-top: 18px;
-    padding: 16px 18px;
+    padding: 18px 20px;
     border: 1px solid #dcdcde;
-    border-radius: 8px;
+    border-radius: 10px;
     background: #fcfcfc;
 }
 
@@ -161,9 +198,10 @@
 
 .holyprof-source-locator-result-group {
     border: 1px solid #dcdcde;
-    border-radius: 8px;
+    border-radius: 10px;
     background: #fcfcfc;
     overflow: hidden;
+    box-shadow: 0 8px 18px rgba(18, 43, 70, 0.03);
 }
 
 .holyprof-source-locator-result-header {
@@ -171,14 +209,14 @@
     flex-wrap: wrap;
     justify-content: space-between;
     gap: 12px 20px;
-    padding: 16px 18px;
+    padding: 18px 20px;
     background: #fff;
     border-bottom: 1px solid #e2e4e7;
 }
 
 .holyprof-source-locator-result-heading h3 {
     margin: 0;
-    font-size: 15px;
+    font-size: 17px;
     line-height: 1.3;
 }
 
@@ -272,6 +310,10 @@
     margin-top: 12px;
 }
 
+.holyprof-source-locator-result-actions .button {
+    min-height: 32px;
+}
+
 .holyprof-source-locator-related-evidence {
     margin-top: 16px;
     padding-top: 14px;
@@ -304,7 +346,7 @@
     grid-template-columns: 88px minmax(0, 1fr);
     gap: 12px;
     align-items: start;
-    padding: 14px 18px;
+    padding: 16px 20px;
     border-top: 1px solid #f0f0f1;
 }
 
@@ -351,7 +393,18 @@
 }
 
 @media (max-width: 782px) {
+    .holyprof-source-locator-toolbar,
+    .holyprof-source-locator-results,
+    .holyprof-source-locator-helper-tips {
+        padding: 16px;
+    }
+
     .holyprof-source-locator-result-header {
+        padding: 14px;
+    }
+
+    .holyprof-source-locator-setting-header,
+    .holyprof-source-locator-setting-meta {
         padding: 14px;
     }
 

@@ -60,7 +60,7 @@ class Holyprof_Source_Locator_AdminPage {
                 'nonce' => wp_create_nonce('holyprof_source_locator_search'),
                 'action' => 'holyprof_source_locator_search',
                 'messages' => array(
-                    'loading' => __('Searching sources...', 'holyprof-source-locator'),
+                    'loading' => __('Searching plugins, themes, hooks, and admin pages...', 'holyprof-source-locator'),
                     'error' => __('Something went wrong while searching. Please try again.', 'holyprof-source-locator'),
                 ),
             )
@@ -88,6 +88,9 @@ class Holyprof_Source_Locator_AdminPage {
         ?>
         <div class="wrap holyprof-source-locator-admin">
             <h1><?php esc_html_e('Holyprof Source Locator', 'holyprof-source-locator'); ?></h1>
+            <p class="holyprof-source-locator-intro">
+                <?php esc_html_e('Search for a feature, settings page, hook, template, CSS selector, JavaScript keyword, filename, or functions.php and trace where it lives in WordPress.', 'holyprof-source-locator'); ?>
+            </p>
             <form method="get" class="holyprof-source-locator-form" id="holyprof-source-locator-form">
                 <input type="hidden" name="page" value="holyprof-source-locator">
                 <?php wp_nonce_field('holyprof_source_locator_search', 'holyprof_source_locator_nonce'); ?>
@@ -109,7 +112,7 @@ class Holyprof_Source_Locator_AdminPage {
 
                     <div class="holyprof-source-locator-field holyprof-source-locator-field-select">
                         <label class="screen-reader-text" for="wsf-filter">
-                            <?php esc_html_e('Search scope', 'holyprof-source-locator'); ?>
+                            <?php esc_html_e('Filter results', 'holyprof-source-locator'); ?>
                         </label>
                         <select id="wsf-filter" name="wsf_filter">
                             <?php foreach ($filters as $value => $label) : ?>
@@ -127,6 +130,14 @@ class Holyprof_Source_Locator_AdminPage {
                     </div>
                 </div>
             </form>
+            <div class="holyprof-source-locator-search-examples">
+                <strong><?php esc_html_e('Try searches like:', 'holyprof-source-locator'); ?></strong>
+                <span><?php esc_html_e('sitemap', 'holyprof-source-locator'); ?></span>
+                <span><?php esc_html_e('breadcrumb', 'holyprof-source-locator'); ?></span>
+                <span><?php esc_html_e('wp-mail-smtp', 'holyprof-source-locator'); ?></span>
+                <span><?php esc_html_e('add_action', 'holyprof-source-locator'); ?></span>
+                <span><?php esc_html_e('functions.php', 'holyprof-source-locator'); ?></span>
+            </div>
 
             <div id="holyprof-source-locator-results" aria-live="polite">
                 <?php echo $this->render_results_html($state); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
@@ -285,7 +296,7 @@ class Holyprof_Source_Locator_AdminPage {
         if (! empty($search_response['truncated'])) {
             $state['truncated_message'] = sprintf(
                 /* translators: %d: maximum number of results shown before the search is truncated. */
-                __('Showing the first %d matches. Refine your search to see more specific results.', 'holyprof-source-locator'),
+                __('Showing the first %d matches. Try a more specific keyword or switch to a narrower filter such as PHP, Hooks, or Settings/Admin Pages.', 'holyprof-source-locator'),
                 absint($search_response['max_results'])
             );
         }
@@ -544,7 +555,53 @@ class Holyprof_Source_Locator_AdminPage {
             }
         }
 
-        return array_values($merged);
+        $merged = array_values($merged);
+
+        usort(
+            $merged,
+            function ($left, $right) {
+                $left_score = $this->get_settings_admin_result_sort_score($left);
+                $right_score = $this->get_settings_admin_result_sort_score($right);
+
+                if ($left_score === $right_score) {
+                    return strcasecmp(
+                        isset($left['page_title']) ? (string) $left['page_title'] : '',
+                        isset($right['page_title']) ? (string) $right['page_title'] : ''
+                    );
+                }
+
+                return $right_score <=> $left_score;
+            }
+        );
+
+        return $merged;
+    }
+
+    private function get_settings_admin_result_sort_score($result) {
+        $score = 0;
+        $owner = isset($result['source_owner']) ? strtolower((string) $result['source_owner']) : '';
+
+        if (! empty($result['url']) && $this->is_valid_admin_result_url((string) $result['url'])) {
+            $score += 120;
+        }
+
+        if ($owner !== '' && $owner !== strtolower(__('Unknown source', 'holyprof-source-locator'))) {
+            $score += 70;
+        }
+
+        if (! empty($result['plugin_name'])) {
+            $score += 60;
+        }
+
+        if (! empty($result['page_title'])) {
+            $score += 30;
+        }
+
+        if (! empty($result['reason'])) {
+            $score += 20;
+        }
+
+        return $score;
     }
 
     private function render_location_cards_section($title, $results, $search_term, $show_related_evidence) {

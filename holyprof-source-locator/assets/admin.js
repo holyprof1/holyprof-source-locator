@@ -77,6 +77,7 @@
             }
 
             resultsContainer.innerHTML = payload.data.html;
+            resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
             if (searchInput) {
                 searchInput.focus();
             }
