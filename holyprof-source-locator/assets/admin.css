@@ -234,18 +234,69 @@
     background: #ffe2d1;
 }
 
+.holyprof-source-locator-file-badge-confidence-exact {
+    color: #0b5c18;
+    background: #d7f5dc;
+}
+
+.holyprof-source-locator-file-badge-confidence-likely {
+    color: #5d4100;
+    background: #fff0bf;
+}
+
+.holyprof-source-locator-file-badge-confidence-possible {
+    color: #5a2f93;
+    background: #efe3ff;
+}
+
+.holyprof-source-locator-file-badge-match-type {
+    color: #5b3000;
+    background: #ffe8c7;
+}
+
 .holyprof-source-locator-match-count {
     color: #3c434a;
     background: #f0f0f1;
 }
 
-.holyprof-source-locator-copy-path {
+.holyprof-source-locator-copy-path,
+.holyprof-source-locator-copy-button {
     min-height: 28px;
     padding: 0 10px;
 }
 
+.holyprof-source-locator-result-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.holyprof-source-locator-related-evidence {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #e2e4e7;
+}
+
+.holyprof-source-locator-related-evidence-item + .holyprof-source-locator-related-evidence-item {
+    margin-top: 14px;
+}
+
+.holyprof-source-locator-related-evidence-path {
+    display: inline-block;
+    margin: 0 0 8px;
+    word-break: break-word;
+}
+
 .holyprof-source-locator-match-rows {
     display: grid;
+}
+
+.holyprof-source-locator-match-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 10px;
 }
 
 .holyprof-source-locator-match-row {

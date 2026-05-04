@@ -15,7 +15,7 @@
     }
 
     resultsContainer.addEventListener('click', function (event) {
-        var button = event.target.closest('.holyprof-source-locator-copy-path');
+        var button = event.target.closest('.holyprof-source-locator-copy-button');
         var textToCopy;
 
         if (!button) {

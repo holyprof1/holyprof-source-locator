@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Holyprof Source Locator
  * Plugin URI: https://tobi.holyprofweb.com/holyprof-source-locator
- * Description: Find where code, hooks, templates, and text are defined in your themes and plugins.
+ * Description: Find where WordPress features are defined in code and where they are configured in admin, plugin, or theme settings pages.
  * Version: 1.0.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
@@ -31,7 +31,6 @@ function holyprof_source_locator_bootstrap() {
     }
 
     $search_engine = new Holyprof_Source_Locator_SearchEngine();
-    $search_engine->register_admin_page_capture();
     $admin_page = new Holyprof_Source_Locator_AdminPage($search_engine);
 
     $admin_page->register();

@@ -102,7 +102,7 @@ class Holyprof_Source_Locator_AdminPage {
                             type="search"
                             name="wsf_search"
                             value="<?php echo esc_attr($search_term); ?>"
-                            placeholder="<?php esc_attr_e('Search theme files, plugin files, hooks, templates, CSS, or JS...', 'holyprof-source-locator'); ?>"
+                            placeholder="<?php esc_attr_e('Search features, hooks, templates, functions.php, CSS, JS, or settings pages...', 'holyprof-source-locator'); ?>"
                             autofocus
                         >
                     </div>
@@ -168,13 +168,15 @@ class Holyprof_Source_Locator_AdminPage {
     private function get_filters() {
         return array(
             'all' => __('All', 'holyprof-source-locator'),
-            'code' => __('Code', 'holyprof-source-locator'),
-            'wordpress' => __('WordPress', 'holyprof-source-locator'),
-            'plugins' => __('Plugins', 'holyprof-source-locator'),
-            'themes' => __('Themes', 'holyprof-source-locator'),
-            'settings' => __('Settings', 'holyprof-source-locator'),
-            'menu-pages' => __('Menu Pages', 'holyprof-source-locator'),
+            'best-matches' => __('Best Matches', 'holyprof-source-locator'),
+            'settings-admin' => __('Settings/Admin Pages', 'holyprof-source-locator'),
+            'plugin' => __('Plugins', 'holyprof-source-locator'),
+            'theme' => __('Themes', 'holyprof-source-locator'),
+            'php' => __('PHP', 'holyprof-source-locator'),
+            'css' => __('CSS', 'holyprof-source-locator'),
+            'js' => __('JS', 'holyprof-source-locator'),
             'templates' => __('Templates', 'holyprof-source-locator'),
+            'hooks' => __('Hooks', 'holyprof-source-locator'),
         );
     }
 
@@ -242,10 +244,13 @@ class Holyprof_Source_Locator_AdminPage {
     private function build_search_state($search_term, $filter, $has_submitted) {
         $state = array(
             'search_term' => $search_term,
+            'filter' => $filter,
             'results' => array(),
             'file_results' => array(),
+            'feature_results' => array(),
             'settings_results' => array(),
             'admin_page_results' => array(),
+            'is_feature_search' => false,
             'is_settings_search' => false,
             'is_code_search' => false,
             'is_text_finder_search' => false,
@@ -258,17 +263,22 @@ class Holyprof_Source_Locator_AdminPage {
         }
 
         $search_response = $this->search_engine->search($search_term, $filter);
+        $state['filter'] = $filter;
         $state['results'] = isset($search_response['results']) ? $search_response['results'] : array();
         $state['file_results'] = isset($search_response['file_results']) ? $search_response['file_results'] : $state['results'];
+        $state['feature_results'] = isset($search_response['feature_results']) ? $search_response['feature_results'] : array();
         $state['settings_results'] = isset($search_response['settings_results']) ? $search_response['settings_results'] : array();
         $state['admin_page_results'] = isset($search_response['admin_page_results']) ? $search_response['admin_page_results'] : array();
+        $state['is_feature_search'] = ! empty($search_response['is_feature_search']);
         $state['is_settings_search'] = ! empty($search_response['is_settings_search']);
         $state['is_code_search'] = ! empty($search_response['is_code_search']);
         $state['is_text_finder_search'] = ! empty($search_response['is_text_finder_search']);
 
         if ($search_term === '') {
             $state['results_message'] = __('Enter a keyword to search.', 'holyprof-source-locator');
-        } elseif (empty($state['file_results']) && empty($state['settings_results']) && empty($state['admin_page_results'])) {
+        } elseif ($filter === 'best-matches' && empty($state['feature_results'])) {
+            $state['results_message'] = __('No best matches found', 'holyprof-source-locator');
+        } elseif (empty($state['file_results']) && empty($state['feature_results']) && empty($state['admin_page_results'])) {
             $state['results_message'] = __('No results found', 'holyprof-source-locator');
         }
 
@@ -285,15 +295,36 @@ class Holyprof_Source_Locator_AdminPage {
 
     private function render_results_html($state) {
         $search_term = isset($state['search_term']) ? (string) $state['search_term'] : '';
+        $filter = isset($state['filter']) ? (string) $state['filter'] : 'all';
         $file_results = isset($state['file_results']) ? $state['file_results'] : array();
+        $feature_results = isset($state['feature_results']) ? $state['feature_results'] : array();
         $settings_results = isset($state['settings_results']) ? $state['settings_results'] : array();
         $admin_page_results = isset($state['admin_page_results']) ? $state['admin_page_results'] : array();
-        $is_settings_search = ! empty($state['is_settings_search']);
+        $settings_admin_results = $this->merge_settings_admin_results($settings_results, $admin_page_results);
+        $is_feature_search = ! empty($state['is_feature_search']);
         $is_code_search = ! empty($state['is_code_search']);
-        $is_text_finder_search = ! empty($state['is_text_finder_search']);
         $results_message = isset($state['results_message']) ? $state['results_message'] : '';
         $truncated_message = isset($state['truncated_message']) ? $state['truncated_message'] : '';
-        $total_results = count($file_results) + count($settings_results) + count($admin_page_results);
+        $sections = $this->get_visible_sections($filter, ! empty($feature_results), ! empty($settings_admin_results), ! empty($file_results), $is_code_search, $is_feature_search);
+        $has_visible_results = false;
+        $total_results = 0;
+
+        foreach ($sections as $section_type) {
+            if ($section_type === 'best-matches' && ! empty($feature_results)) {
+                $has_visible_results = true;
+                $total_results += count($feature_results);
+            }
+
+            if ($section_type === 'settings-admin' && ! empty($settings_admin_results)) {
+                $has_visible_results = true;
+                $total_results += count($settings_admin_results);
+            }
+
+            if ($section_type === 'files' && ! empty($file_results)) {
+                $has_visible_results = true;
+                $total_results += count($file_results);
+            }
+        }
 
         ob_start();
         ?>
@@ -318,221 +349,28 @@ class Holyprof_Source_Locator_AdminPage {
                 </div>
             <?php endif; ?>
 
-            <?php
-            if ($is_code_search) {
-                $sections = array('files', 'admin-pages', 'settings');
-            } elseif ($is_settings_search) {
-                $sections = array('settings', 'admin-pages', 'files');
-            } elseif (! empty($admin_page_results)) {
-                $sections = array('admin-pages', 'files', 'settings');
-            } else {
-                $sections = array('files', 'settings', 'admin-pages');
-            }
-            $best_match_assigned = false;
-            ?>
-
             <?php foreach ($sections as $section_type) : ?>
-                <?php if ($section_type === 'admin-pages' && ! empty($admin_page_results)) : ?>
-                    <div class="holyprof-source-locator-section">
-                        <h3 class="holyprof-source-locator-section-title">
-                            <?php echo esc_html($is_text_finder_search ? __('Related Admin Page References', 'holyprof-source-locator') : __('Admin Page References', 'holyprof-source-locator')); ?>
-                        </h3>
-                        <div class="holyprof-source-locator-settings-list">
-                            <?php foreach ($admin_page_results as $admin_page_index => $admin_page_result) : ?>
-                                <?php $is_best_match = ! $best_match_assigned && $admin_page_index === 0; ?>
-                                <?php if ($is_best_match) { $best_match_assigned = true; } ?>
-                                <section class="holyprof-source-locator-setting-item<?php echo $is_best_match ? ' is-best-match' : ''; ?>">
-                                    <div class="holyprof-source-locator-setting-header">
-                                        <div class="holyprof-source-locator-result-heading">
-                                            <h3><?php echo esc_html(isset($admin_page_result['page_title']) ? $admin_page_result['page_title'] : ''); ?></h3>
-                                            <p class="holyprof-source-locator-result-source"><?php echo esc_html(isset($admin_page_result['plugin_name']) ? $admin_page_result['plugin_name'] : ''); ?></p>
-                                            <p class="holyprof-source-locator-result-path"><?php echo esc_html(isset($admin_page_result['path']) ? $admin_page_result['path'] : ''); ?></p>
-                                        </div>
-                                        <div class="holyprof-source-locator-result-summary">
-                                            <?php if ($is_best_match) : ?>
-                                                <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-best">
-                                                    <?php esc_html_e('Best match', 'holyprof-source-locator'); ?>
-                                                </span>
-                                            <?php endif; ?>
-                                            <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-source">
-                                                <?php
-                                                echo esc_html(
-                                                    ! empty($admin_page_result['plugin_name'])
-                                                        ? $admin_page_result['plugin_name']
-                                                        : __('Plugin', 'holyprof-source-locator')
-                                                );
-                                                ?>
-                                            </span>
-                                            <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-menu">
-                                                <?php echo esc_html(isset($admin_page_result['match_type']) ? $admin_page_result['match_type'] : __('Admin page match', 'holyprof-source-locator')); ?>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div class="holyprof-source-locator-setting-meta">
-                                        <?php if (! empty($admin_page_result['plugin_name'])) : ?>
-                                            <p><strong><?php esc_html_e('Plugin Name:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($admin_page_result['plugin_name']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($admin_page_result['page_title'])) : ?>
-                                            <p><strong><?php esc_html_e('Admin Page Title:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($admin_page_result['page_title']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($admin_page_result['menu_title'])) : ?>
-                                            <p><strong><?php esc_html_e('Menu Label:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($admin_page_result['menu_title']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($admin_page_result['slug'])) : ?>
-                                            <p><strong><?php esc_html_e('Page Slug:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($admin_page_result['slug']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($admin_page_result['path'])) : ?>
-                                            <p><strong><?php esc_html_e('Page Path:', 'holyprof-source-locator'); ?></strong> <code><?php echo esc_html($admin_page_result['path']); ?></code></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($admin_page_result['url'])) : ?>
-                                            <p><strong><?php esc_html_e('Admin URL:', 'holyprof-source-locator'); ?></strong> <code><?php echo esc_html($admin_page_result['url']); ?></code></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($admin_page_result['callback_file'])) : ?>
-                                            <p><strong><?php esc_html_e('Callback File:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($admin_page_result['callback_file']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($admin_page_result['is_clickable']) && ! empty($admin_page_result['url']) && $this->is_valid_admin_result_url($admin_page_result['url'])) : ?>
-                                            <p class="holyprof-source-locator-setting-action">
-                                                <a class="button button-secondary" href="<?php echo esc_url($admin_page_result['url']); ?>" target="_blank" rel="noopener noreferrer">
-                                                    <?php esc_html_e('Open admin page', 'holyprof-source-locator'); ?>
-                                                </a>
-                                            </p>
-                                        <?php endif; ?>
-                                    </div>
-
-                                    <?php if (! empty($admin_page_result['visible_text_matches']) && is_array($admin_page_result['visible_text_matches'])) : ?>
-                                        <div class="holyprof-source-locator-match-rows">
-                                            <?php foreach ($admin_page_result['visible_text_matches'] as $visible_text_match) : ?>
-                                                <div class="holyprof-source-locator-match-row">
-                                                    <div class="holyprof-source-locator-line-number">
-                                                        <?php echo esc_html(isset($visible_text_match['kind']) ? $visible_text_match['kind'] : __('Visible text', 'holyprof-source-locator')); ?>
-                                                    </div>
-                                                    <div>
-                                                        <p class="holyprof-source-locator-callback-file"><?php esc_html_e('Related admin page text', 'holyprof-source-locator'); ?></p>
-                                                        <pre class="holyprof-source-locator-result-snippet"><?php echo wp_kses($this->highlight_match($visible_text_match['snippet'], $search_term), array('mark' => array())); ?></pre>
-                                                    </div>
-                                                </div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php endif; ?>
-
-                                    <?php if (! empty($admin_page_result['callback_matches']) && is_array($admin_page_result['callback_matches'])) : ?>
-                                        <div class="holyprof-source-locator-match-rows">
-                                            <?php foreach ($admin_page_result['callback_matches'] as $callback_match) : ?>
-                                                <div class="holyprof-source-locator-match-row">
-                                                    <div class="holyprof-source-locator-line-number">
-                                                    <?php
-                                                    printf(
-                                                        /* translators: %d: line number containing the admin page callback match. */
-                                                        esc_html__('Line %d', 'holyprof-source-locator'),
-                                                        absint($callback_match['line_number'])
-                                                        );
-                                                        ?>
-                                                    </div>
-                                                    <div>
-                                                        <?php if (! empty($callback_match['file'])) : ?>
-                                                            <p class="holyprof-source-locator-callback-file"><?php echo esc_html($callback_match['file']); ?></p>
-                                                        <?php endif; ?>
-                                                        <pre class="holyprof-source-locator-result-snippet"><?php echo wp_kses($this->highlight_match($callback_match['snippet'], $search_term), array('mark' => array())); ?></pre>
-                                                    </div>
-                                                </div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php endif; ?>
-                                </section>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
+                <?php if ($section_type === 'best-matches' && ! empty($feature_results)) : ?>
+                    <?php echo $this->render_location_cards_section(__('Best Matches', 'holyprof-source-locator'), $feature_results, $search_term, true); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                 <?php endif; ?>
 
-                <?php if ($section_type === 'settings' && ! empty($settings_results)) : ?>
-                    <div class="holyprof-source-locator-section">
-                        <h3 class="holyprof-source-locator-section-title">
-                            <?php echo esc_html($is_text_finder_search ? __('Related Settings & Menu References', 'holyprof-source-locator') : __('Settings & Menu References', 'holyprof-source-locator')); ?>
-                        </h3>
-                        <div class="holyprof-source-locator-settings-list">
-                            <?php foreach ($settings_results as $setting_index => $setting_result) : ?>
-                                <?php $is_best_match = ! $best_match_assigned && $setting_index === 0; ?>
-                                <?php if ($is_best_match) { $best_match_assigned = true; } ?>
-                                <section class="holyprof-source-locator-setting-item<?php echo $is_best_match ? ' is-best-match' : ''; ?>">
-                                    <div class="holyprof-source-locator-setting-header">
-                                        <div class="holyprof-source-locator-result-heading">
-                                            <h3><?php echo esc_html(isset($setting_result['title']) ? $setting_result['title'] : ''); ?></h3>
-                                            <p class="holyprof-source-locator-result-source"><?php echo esc_html(isset($setting_result['source']) ? $setting_result['source'] : ''); ?></p>
-                                            <p class="holyprof-source-locator-result-path"><?php echo esc_html(isset($setting_result['path']) ? $setting_result['path'] : ''); ?></p>
-                                        </div>
-                                        <div class="holyprof-source-locator-result-summary">
-                                            <?php if ($is_best_match) : ?>
-                                                <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-best">
-                                                    <?php esc_html_e('Best match', 'holyprof-source-locator'); ?>
-                                                </span>
-                                            <?php endif; ?>
-                                            <?php if (! empty($setting_result['source_type'])) : ?>
-                                                <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-source">
-                                                    <?php echo esc_html($setting_result['source_type']); ?>
-                                                </span>
-                                            <?php endif; ?>
-                                            <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-menu">
-                                                <?php echo esc_html(isset($setting_result['match_type']) ? $setting_result['match_type'] : __('Settings', 'holyprof-source-locator')); ?>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div class="holyprof-source-locator-setting-meta">
-                                        <?php if (! empty($setting_result['menu_title'])) : ?>
-                                            <p><strong><?php esc_html_e('Menu Title:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($setting_result['menu_title']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($setting_result['page_title'])) : ?>
-                                            <p><strong><?php esc_html_e('Page Title:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($setting_result['page_title']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($setting_result['section_title'])) : ?>
-                                            <p><strong><?php esc_html_e('Section Title:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($setting_result['section_title']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($setting_result['field_label'])) : ?>
-                                            <p><strong><?php esc_html_e('Field Label:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($setting_result['field_label']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($setting_result['setting_name'])) : ?>
-                                            <p><strong><?php esc_html_e('Setting Name:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($setting_result['setting_name']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($setting_result['slug'])) : ?>
-                                            <p><strong><?php esc_html_e('Slug:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($setting_result['slug']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($setting_result['url'])) : ?>
-                                            <p><strong><?php esc_html_e('Admin URL:', 'holyprof-source-locator'); ?></strong> <code><?php echo esc_html($setting_result['url']); ?></code></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($setting_result['note'])) : ?>
-                                            <p class="holyprof-source-locator-setting-note"><?php echo esc_html($setting_result['note']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if (! empty($setting_result['is_clickable']) && ! empty($setting_result['url']) && $this->is_valid_admin_result_url($setting_result['url'])) : ?>
-                                            <p class="holyprof-source-locator-setting-action">
-                                                <a class="button button-secondary" href="<?php echo esc_url($setting_result['url']); ?>" target="_blank" rel="noopener noreferrer">
-                                                    <?php esc_html_e('Open settings page', 'holyprof-source-locator'); ?>
-                                                </a>
-                                            </p>
-                                        <?php endif; ?>
-                                    </div>
-                                </section>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
+                <?php if ($section_type === 'settings-admin' && ! empty($settings_admin_results)) : ?>
+                    <?php echo $this->render_location_cards_section(__('Settings/Admin Pages', 'holyprof-source-locator'), $settings_admin_results, $search_term, false); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                 <?php endif; ?>
 
                 <?php if ($section_type === 'files' && ! empty($file_results)) : ?>
                     <?php $grouped_results = $this->group_results_by_file($file_results); ?>
                     <div class="holyprof-source-locator-section">
                         <h3 class="holyprof-source-locator-section-title">
-                            <?php echo esc_html($is_text_finder_search ? __('Source File Matches', 'holyprof-source-locator') : __('File Matches', 'holyprof-source-locator')); ?>
+                            <?php esc_html_e('Source File Matches', 'holyprof-source-locator'); ?>
                         </h3>
                         <div class="holyprof-source-locator-results-list">
-                            <?php $file_group_index = 0; ?>
                             <?php foreach ($grouped_results as $file_path => $matches) : ?>
                                 <?php $file_name = wp_basename($file_path); ?>
                                 <?php $file_type = $this->get_file_type_label($file_path); ?>
                                 <?php $source_label = isset($matches[0]['source_label']) ? $matches[0]['source_label'] : ''; ?>
                                 <?php $source_type = isset($matches[0]['source_type']) ? $matches[0]['source_type'] : ''; ?>
-                                <?php $is_best_match = ! $best_match_assigned && $file_group_index === 0; ?>
-                                <?php if ($is_best_match) { $best_match_assigned = true; } ?>
-                                <section class="holyprof-source-locator-result-group<?php echo $is_best_match ? ' is-best-match' : ''; ?>">
+                                <section class="holyprof-source-locator-result-group">
                                     <div class="holyprof-source-locator-result-header">
                                         <div class="holyprof-source-locator-result-heading">
                                             <h3><?php echo esc_html($file_name); ?></h3>
@@ -543,11 +381,6 @@ class Holyprof_Source_Locator_AdminPage {
                                         </div>
 
                                         <div class="holyprof-source-locator-result-summary">
-                                            <?php if ($is_best_match) : ?>
-                                                <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-best">
-                                                    <?php esc_html_e('Best match', 'holyprof-source-locator'); ?>
-                                                </span>
-                                            <?php endif; ?>
                                             <?php if ($source_type) : ?>
                                                 <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-source">
                                                     <?php echo esc_html($source_type); ?>
@@ -565,7 +398,7 @@ class Holyprof_Source_Locator_AdminPage {
                                                 );
                                                 ?>
                                             </span>
-                                            <button type="button" class="button button-secondary holyprof-source-locator-copy-path" data-copy-text="<?php echo esc_attr($file_path); ?>">
+                                            <button type="button" class="button button-secondary holyprof-source-locator-copy-button holyprof-source-locator-copy-path" data-copy-text="<?php echo esc_attr($file_path); ?>">
                                                 <?php esc_html_e('Copy path', 'holyprof-source-locator'); ?>
                                             </button>
                                         </div>
@@ -575,52 +408,351 @@ class Holyprof_Source_Locator_AdminPage {
                                         <?php foreach ($matches as $match) : ?>
                                             <div class="holyprof-source-locator-match-row">
                                                 <div class="holyprof-source-locator-line-number">
-                                                    <?php
-                                                    printf(
-                                                        /* translators: %d: line number containing the file match. */
-                                                        esc_html__('Line %d', 'holyprof-source-locator'),
-                                                        absint($match['line_number'])
-                                                    );
-                                                    ?>
+                                                    <?php if (! empty($match['line_number'])) : ?>
+                                                        <?php
+                                                        printf(
+                                                            /* translators: %d: line number containing the file match. */
+                                                            esc_html__('Line %d', 'holyprof-source-locator'),
+                                                            absint($match['line_number'])
+                                                        );
+                                                        ?>
+                                                    <?php else : ?>
+                                                        <?php esc_html_e('Path match', 'holyprof-source-locator'); ?>
+                                                    <?php endif; ?>
                                                 </div>
-                                                <pre class="holyprof-source-locator-result-snippet"><?php echo wp_kses($this->highlight_match($match['snippet'], $search_term), array('mark' => array())); ?></pre>
+                                                <div>
+                                                    <div class="holyprof-source-locator-match-row-actions">
+                                                        <?php if (! empty($match['matched_keyword'])) : ?>
+                                                            <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-match-type">
+                                                                <?php
+                                                                printf(
+                                                                    /* translators: %s: matched keyword */
+                                                                    esc_html__('Matched keyword: %s', 'holyprof-source-locator'),
+                                                                    esc_html($match['matched_keyword'])
+                                                                );
+                                                                ?>
+                                                            </span>
+                                                        <?php endif; ?>
+                                                        <?php if (! empty($match['result_type'])) : ?>
+                                                            <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-match-type"><?php echo esc_html($match['result_type']); ?></span>
+                                                        <?php endif; ?>
+                                                        <?php if (! empty($match['hook_type'])) : ?>
+                                                            <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-menu"><?php echo esc_html($match['hook_type']); ?></span>
+                                                        <?php endif; ?>
+                                                        <?php if (! empty($match['hook_name'])) : ?>
+                                                            <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-source"><?php echo esc_html($match['hook_name']); ?></span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <div class="holyprof-source-locator-match-row-actions">
+                                                        <?php if (! empty($match['line_number'])) : ?>
+                                                            <button type="button" class="button button-small holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr((string) $match['line_number']); ?>">
+                                                                <?php esc_html_e('Copy line', 'holyprof-source-locator'); ?>
+                                                            </button>
+                                                            <button type="button" class="button button-small holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr($file_path . ':' . absint($match['line_number'])); ?>">
+                                                                <?php esc_html_e('Copy path:line', 'holyprof-source-locator'); ?>
+                                                            </button>
+                                                        <?php endif; ?>
+                                                        <button type="button" class="button button-small holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr(isset($match['snippet']) ? (string) $match['snippet'] : ''); ?>">
+                                                            <?php esc_html_e('Copy snippet', 'holyprof-source-locator'); ?>
+                                                        </button>
+                                                    </div>
+                                                    <pre class="holyprof-source-locator-result-snippet"><?php echo wp_kses($this->highlight_match($match['snippet'], $search_term), array('mark' => array())); ?></pre>
+                                                </div>
                                             </div>
                                         <?php endforeach; ?>
                                     </div>
                                 </section>
-                                <?php $file_group_index++; ?>
                             <?php endforeach; ?>
                         </div>
                     </div>
                 <?php endif; ?>
             <?php endforeach; ?>
 
-            <?php if (empty($file_results) && empty($settings_results) && empty($admin_page_results) && $results_message) : ?>
+            <?php if (! $has_visible_results && $results_message) : ?>
                 <div class="holyprof-source-locator-notice">
                     <p><?php echo esc_html($results_message); ?></p>
                 </div>
                 <div class="holyprof-source-locator-helper-tips">
                     <h3 class="holyprof-source-locator-section-title"><?php esc_html_e('No results? Try...', 'holyprof-source-locator'); ?></h3>
                     <ul>
-                        <li><?php esc_html_e('switching the search scope to Code, Plugins, Themes, or Templates', 'holyprof-source-locator'); ?></li>
+                        <li><?php esc_html_e('switching the filter to Best Matches, Settings/Admin Pages, Plugins, Themes, PHP, JS, Templates, or Hooks', 'holyprof-source-locator'); ?></li>
                         <li><?php esc_html_e('searching for a function name, hook name, class name, CSS selector, or JS keyword', 'holyprof-source-locator'); ?></li>
+                        <li><?php esc_html_e('searching for a feature word such as sitemap, breadcrumb, smtp, cache, analytics, or checkout', 'holyprof-source-locator'); ?></li>
                         <li><?php esc_html_e('searching for a shorter text fragment from the source you want to trace', 'holyprof-source-locator'); ?></li>
                         <li><?php esc_html_e('trying simpler spacing or punctuation if the first search is too exact', 'holyprof-source-locator'); ?></li>
                     </ul>
                 </div>
-            <?php elseif (! empty($settings_results) && empty($file_results)) : ?>
+            <?php elseif (! empty($feature_results) && empty($file_results)) : ?>
                 <div class="holyprof-source-locator-notice">
                     <p><?php esc_html_e('No file matches found for this search.', 'holyprof-source-locator'); ?></p>
                 </div>
-            <?php elseif (empty($file_results) && empty($settings_results) && empty($admin_page_results)) : ?>
+            <?php elseif (! $has_visible_results) : ?>
                 <p class="description">
-                    <?php esc_html_e('Enter a search term and choose a scope to begin.', 'holyprof-source-locator'); ?>
+                    <?php esc_html_e('Enter a search term and choose a filter to begin.', 'holyprof-source-locator'); ?>
                 </p>
             <?php endif; ?>
         </div>
         <?php
 
         return (string) ob_get_clean();
+    }
+
+    private function get_visible_sections($filter, $has_best_matches, $has_settings_admin, $has_file_matches, $is_code_search, $is_feature_search) {
+        if ($filter === 'best-matches') {
+            return array('best-matches');
+        }
+
+        if ($filter === 'settings-admin') {
+            return array('settings-admin');
+        }
+
+        if (in_array($filter, array('php', 'css', 'js', 'templates', 'hooks'), true)) {
+            return array('files');
+        }
+
+        if ($is_code_search && ! $is_feature_search) {
+            return array('files', 'best-matches', 'settings-admin');
+        }
+
+        return array('best-matches', 'settings-admin', 'files');
+    }
+
+    private function merge_settings_admin_results($settings_results, $admin_page_results) {
+        $merged = array();
+
+        foreach (array_merge((array) $admin_page_results, (array) $settings_results) as $result) {
+            $key = strtolower(
+                implode(
+                    '|',
+                    array(
+                        isset($result['owner_slug']) ? (string) $result['owner_slug'] : '',
+                        isset($result['slug']) ? (string) $result['slug'] : '',
+                        isset($result['path']) ? (string) $result['path'] : '',
+                        isset($result['page_title']) ? (string) $result['page_title'] : '',
+                        isset($result['match_type']) ? (string) $result['match_type'] : '',
+                    )
+                )
+            );
+
+            if (! isset($merged[$key])) {
+                $merged[$key] = $result;
+                continue;
+            }
+
+            if (empty($merged[$key]['url']) && ! empty($result['url'])) {
+                $merged[$key] = $result;
+            }
+        }
+
+        return array_values($merged);
+    }
+
+    private function render_location_cards_section($title, $results, $search_term, $show_related_evidence) {
+        ob_start();
+        ?>
+        <div class="holyprof-source-locator-section">
+            <h3 class="holyprof-source-locator-section-title"><?php echo esc_html($title); ?></h3>
+            <div class="holyprof-source-locator-settings-list">
+                <?php foreach ((array) $results as $index => $result) : ?>
+                    <section class="holyprof-source-locator-setting-item<?php echo ($show_related_evidence && $index === 0) ? ' is-best-match' : ''; ?>">
+                        <div class="holyprof-source-locator-setting-header">
+                            <div class="holyprof-source-locator-result-heading">
+                                <h3><?php echo esc_html($this->get_location_result_title($result)); ?></h3>
+                                <?php if ($this->get_location_result_owner($result) !== '') : ?>
+                                    <p class="holyprof-source-locator-result-source"><?php echo esc_html($this->get_location_result_owner($result)); ?></p>
+                                <?php endif; ?>
+                                <?php if ($this->get_location_result_path($result) !== '') : ?>
+                                    <p class="holyprof-source-locator-result-path"><?php echo esc_html($this->get_location_result_path($result)); ?></p>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="holyprof-source-locator-result-summary">
+                                <?php if ($show_related_evidence && $index === 0) : ?>
+                                    <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-best">
+                                        <?php esc_html_e('Best match', 'holyprof-source-locator'); ?>
+                                    </span>
+                                <?php endif; ?>
+                                <?php if (! empty($result['source_type'])) : ?>
+                                    <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-source"><?php echo esc_html($result['source_type']); ?></span>
+                                <?php endif; ?>
+                                <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-menu"><?php echo esc_html($this->get_location_result_match_badge($result)); ?></span>
+                            </div>
+                        </div>
+
+                        <div class="holyprof-source-locator-setting-meta">
+                            <p><strong><?php esc_html_e('Match Type:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($this->get_location_result_match_badge($result)); ?></p>
+                            <?php if (! empty($result['page_title'])) : ?>
+                                <p><strong><?php esc_html_e('Page Title:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($result['page_title']); ?></p>
+                            <?php endif; ?>
+                            <?php if ($this->get_location_result_owner($result) !== '') : ?>
+                                <p><strong><?php esc_html_e('Source Name:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($this->get_location_result_owner($result)); ?></p>
+                            <?php endif; ?>
+                            <?php if (! empty($result['source_type'])) : ?>
+                                <p><strong><?php esc_html_e('Source Type:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($result['source_type']); ?></p>
+                            <?php endif; ?>
+                            <?php if (! empty($result['menu_title'])) : ?>
+                                <p><strong><?php esc_html_e('Menu Label:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($result['menu_title']); ?></p>
+                            <?php endif; ?>
+                            <?php if ($this->get_location_result_path($result) !== '') : ?>
+                                <p><strong><?php echo esc_html($this->get_location_result_path_label($result)); ?></strong> <code><?php echo esc_html($this->get_location_result_path($result)); ?></code></p>
+                            <?php endif; ?>
+                            <?php if (! empty($result['slug'])) : ?>
+                                <p><strong><?php esc_html_e('Page Slug:', 'holyprof-source-locator'); ?></strong> <code><?php echo esc_html($result['slug']); ?></code></p>
+                            <?php endif; ?>
+                            <?php if (! empty($result['url'])) : ?>
+                                <p><strong><?php esc_html_e('Admin URL:', 'holyprof-source-locator'); ?></strong> <code><?php echo esc_html($result['url']); ?></code></p>
+                            <?php endif; ?>
+                            <?php if (! empty($result['reason'])) : ?>
+                                <p><strong><?php esc_html_e('Why this matched:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($result['reason']); ?></p>
+                            <?php endif; ?>
+                            <?php if (! empty($result['note'])) : ?>
+                                <p class="holyprof-source-locator-setting-note"><?php echo esc_html($result['note']); ?></p>
+                            <?php endif; ?>
+                            <?php echo $this->render_location_actions($result); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                            <?php if ($show_related_evidence && ! empty($result['related_evidence'])) : ?>
+                                <?php echo $this->render_related_evidence($result, $search_term); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                            <?php endif; ?>
+                        </div>
+                    </section>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    private function render_location_actions($result) {
+        ob_start();
+        ?>
+        <div class="holyprof-source-locator-result-actions">
+            <?php if ($this->can_current_user_open_admin_result($result)) : ?>
+                <a class="button button-secondary" href="<?php echo esc_url($result['url']); ?>" target="_blank" rel="noopener noreferrer">
+                    <?php esc_html_e('Open settings page', 'holyprof-source-locator'); ?>
+                </a>
+            <?php endif; ?>
+            <?php if (! empty($result['url'])) : ?>
+                <button type="button" class="button button-secondary holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr($result['url']); ?>">
+                    <?php esc_html_e('Copy admin URL', 'holyprof-source-locator'); ?>
+                </button>
+            <?php endif; ?>
+            <?php if (! empty($result['slug'])) : ?>
+                <button type="button" class="button button-secondary holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr($result['slug']); ?>">
+                    <?php esc_html_e('Copy page slug', 'holyprof-source-locator'); ?>
+                </button>
+            <?php endif; ?>
+            <?php if (! empty($result['supporting_path']) && empty($result['url'])) : ?>
+                <button type="button" class="button button-secondary holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr($result['supporting_path']); ?>">
+                    <?php esc_html_e('Copy path', 'holyprof-source-locator'); ?>
+                </button>
+            <?php endif; ?>
+        </div>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    private function render_related_evidence($result, $search_term) {
+        $items = isset($result['related_evidence']) ? (array) $result['related_evidence'] : array();
+
+        if (empty($items)) {
+            return '';
+        }
+
+        ob_start();
+        ?>
+        <div class="holyprof-source-locator-related-evidence">
+            <p><strong><?php esc_html_e('Related source evidence:', 'holyprof-source-locator'); ?></strong></p>
+            <?php foreach ($items as $item) : ?>
+                <div class="holyprof-source-locator-related-evidence-item">
+                    <code class="holyprof-source-locator-related-evidence-path"><?php echo esc_html(isset($item['file_path']) ? $item['file_path'] : ''); ?></code>
+                    <div class="holyprof-source-locator-match-row-actions">
+                        <button type="button" class="button button-small holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr(isset($item['file_path']) ? (string) $item['file_path'] : ''); ?>">
+                            <?php esc_html_e('Copy path', 'holyprof-source-locator'); ?>
+                        </button>
+                        <?php if (! empty($item['line_number'])) : ?>
+                            <button type="button" class="button button-small holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr((string) $item['line_number']); ?>">
+                                <?php esc_html_e('Copy line', 'holyprof-source-locator'); ?>
+                            </button>
+                            <button type="button" class="button button-small holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr(((string) $item['file_path']) . ':' . absint($item['line_number'])); ?>">
+                                <?php esc_html_e('Copy path:line', 'holyprof-source-locator'); ?>
+                            </button>
+                        <?php endif; ?>
+                        <?php if (! empty($item['snippet'])) : ?>
+                            <button type="button" class="button button-small holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr((string) $item['snippet']); ?>">
+                                <?php esc_html_e('Copy snippet', 'holyprof-source-locator'); ?>
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                    <?php if (! empty($item['snippet'])) : ?>
+                        <pre class="holyprof-source-locator-result-snippet"><?php echo wp_kses($this->highlight_match((string) $item['snippet'], $search_term), array('mark' => array())); ?></pre>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <?php
+
+        return (string) ob_get_clean();
+    }
+
+    private function get_location_result_title($result) {
+        if (! empty($result['title'])) {
+            return (string) $result['title'];
+        }
+
+        if (! empty($result['page_title'])) {
+            return (string) $result['page_title'];
+        }
+
+        if (! empty($result['menu_title'])) {
+            return (string) $result['menu_title'];
+        }
+
+        return '';
+    }
+
+    private function get_location_result_owner($result) {
+        if (! empty($result['source_owner'])) {
+            return (string) $result['source_owner'];
+        }
+
+        if (! empty($result['plugin_name'])) {
+            return sprintf(__('Active Plugin: %s', 'holyprof-source-locator'), (string) $result['plugin_name']);
+        }
+
+        return '';
+    }
+
+    private function get_location_result_path($result) {
+        if (! empty($result['path'])) {
+            return (string) $result['path'];
+        }
+
+        if (! empty($result['supporting_path'])) {
+            return (string) $result['supporting_path'];
+        }
+
+        return '';
+    }
+
+    private function get_location_result_path_label($result) {
+        if (isset($result['location_kind']) && $result['location_kind'] === 'file-source') {
+            return __('Source Path:', 'holyprof-source-locator');
+        }
+
+        return __('Menu Path:', 'holyprof-source-locator');
+    }
+
+    private function get_location_result_match_badge($result) {
+        if (! empty($result['confidence_label'])) {
+            return (string) $result['confidence_label'];
+        }
+
+        if (! empty($result['match_type'])) {
+            return (string) $result['match_type'];
+        }
+
+        return __('Source file match', 'holyprof-source-locator');
     }
 
     private function highlight_match($snippet, $search_term) {
@@ -668,6 +800,21 @@ class Holyprof_Source_Locator_AdminPage {
         }
 
         return $labels[$extension];
+    }
+
+    private function can_current_user_open_admin_result($result) {
+        $capability = isset($result['capability']) ? (string) $result['capability'] : '';
+        $url = isset($result['url']) ? (string) $result['url'] : '';
+
+        if (! $this->is_valid_admin_result_url($url)) {
+            return false;
+        }
+
+        if ($capability === '') {
+            return current_user_can('manage_options');
+        }
+
+        return current_user_can($capability);
     }
 
     private function is_valid_admin_result_url($url) {
