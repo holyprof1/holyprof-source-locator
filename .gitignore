@@ -1,0 +1,16 @@
+.svn/
+*.zip
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+node_modules/
+vendor/
+dist/
+build/
+backup/
+.backup/
+trunk/
+tags/
+assets/
