@@ -200,11 +200,17 @@ Test-ZipEntries -Entries $zipEntries
 Expand-Archive -LiteralPath $zipPath -DestinationPath $zipTestRoot -Force
 
 $expectedPluginFile = Join-Path $zipTestRoot 'holyprof-source-locator\holyprof-source-locator.php'
+$wrongNumericWrapperPath = Join-Path $zipTestRoot 'holyprof-source-locator-1'
 $wrongReviewPath = Join-Path $zipTestRoot 'holyprof-source-locator-review\holyprof-source-locator\holyprof-source-locator.php'
 $wrongNestedPath = Join-Path $zipTestRoot 'holyprof-source-locator\holyprof-source-locator\holyprof-source-locator.php'
+$wrongTrunkPath = Join-Path $zipTestRoot 'trunk'
 
 if (-not (Test-Path -LiteralPath $expectedPluginFile)) {
     throw "Packaged zip is invalid. Missing expected plugin file: $expectedPluginFile"
+}
+
+if (Test-Path -LiteralPath $wrongNumericWrapperPath) {
+    throw "Packaged zip is invalid. Unexpected wrapper folder exists after extraction: $wrongNumericWrapperPath"
 }
 
 if (Test-Path -LiteralPath $wrongReviewPath) {
@@ -213,6 +219,10 @@ if (Test-Path -LiteralPath $wrongReviewPath) {
 
 if (Test-Path -LiteralPath $wrongNestedPath) {
     throw "Packaged zip is invalid. Unexpected nested plugin path exists after extraction: $wrongNestedPath"
+}
+
+if (Test-Path -LiteralPath $wrongTrunkPath) {
+    throw "Packaged zip is invalid. Unexpected trunk folder exists after extraction: $wrongTrunkPath"
 }
 
 Invoke-PhpLint -Paths @(
@@ -229,3 +239,6 @@ Remove-IfExists -Path $packageRoot
 Write-Host "Plugin zip built successfully:"
 Write-Host " - $zipPath"
 Write-Host " - $desktopZipPath"
+Write-Host "Correct upload file:"
+Write-Host " $desktopZipPath"
+Write-Host "Use this file in WordPress admin upload."
