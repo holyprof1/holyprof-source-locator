@@ -11,6 +11,8 @@ dist/
 build/
 backup/
 .backup/
+_zip-test/
+_package/
 trunk/
 tags/
 assets/
