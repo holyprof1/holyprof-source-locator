@@ -179,7 +179,7 @@ class Holyprof_Source_Locator_AdminPage {
     private function get_filters() {
         return array(
             'all' => __('All', 'holyprof-source-locator'),
-            'best-matches' => __('Best Matches', 'holyprof-source-locator'),
+            'best-matches' => __('Best Places To Check', 'holyprof-source-locator'),
             'settings-admin' => __('Settings/Admin Pages', 'holyprof-source-locator'),
             'plugin' => __('Plugins', 'holyprof-source-locator'),
             'theme' => __('Themes', 'holyprof-source-locator'),
@@ -362,7 +362,7 @@ class Holyprof_Source_Locator_AdminPage {
 
             <?php foreach ($sections as $section_type) : ?>
                 <?php if ($section_type === 'best-matches' && ! empty($feature_results)) : ?>
-                    <?php echo $this->render_location_cards_section(__('Best Matches', 'holyprof-source-locator'), $feature_results, $search_term, true); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                    <?php echo $this->render_location_cards_section(__('Best Places To Check', 'holyprof-source-locator'), $feature_results, $search_term, true); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                 <?php endif; ?>
 
                 <?php if ($section_type === 'settings-admin' && ! empty($settings_admin_results)) : ?>
@@ -486,7 +486,7 @@ class Holyprof_Source_Locator_AdminPage {
                 <div class="holyprof-source-locator-helper-tips">
                     <h3 class="holyprof-source-locator-section-title"><?php esc_html_e('No results? Try...', 'holyprof-source-locator'); ?></h3>
                     <ul>
-                        <li><?php esc_html_e('switching the filter to Best Matches, Settings/Admin Pages, Plugins, Themes, PHP, JS, Templates, or Hooks', 'holyprof-source-locator'); ?></li>
+                        <li><?php esc_html_e('switching the filter to Best Places To Check, Settings/Admin Pages, Plugins, Themes, PHP, JS, Templates, or Hooks', 'holyprof-source-locator'); ?></li>
                         <li><?php esc_html_e('searching for a function name, hook name, class name, CSS selector, or JS keyword', 'holyprof-source-locator'); ?></li>
                         <li><?php esc_html_e('searching for a feature word such as sitemap, breadcrumb, smtp, cache, analytics, or checkout', 'holyprof-source-locator'); ?></li>
                         <li><?php esc_html_e('searching for a shorter text fragment from the source you want to trace', 'holyprof-source-locator'); ?></li>
@@ -701,9 +701,19 @@ class Holyprof_Source_Locator_AdminPage {
                     <?php esc_html_e('Copy page slug', 'holyprof-source-locator'); ?>
                 </button>
             <?php endif; ?>
-            <?php if (! empty($result['supporting_path']) && empty($result['url'])) : ?>
+            <?php if (! empty($result['supporting_path'])) : ?>
                 <button type="button" class="button button-secondary holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr($result['supporting_path']); ?>">
                     <?php esc_html_e('Copy path', 'holyprof-source-locator'); ?>
+                </button>
+            <?php endif; ?>
+            <?php if (! empty($result['supporting_line']) && ! empty($result['supporting_path'])) : ?>
+                <button type="button" class="button button-secondary holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr(((string) $result['supporting_path']) . ':' . absint($result['supporting_line'])); ?>">
+                    <?php esc_html_e('Copy path:line', 'holyprof-source-locator'); ?>
+                </button>
+            <?php endif; ?>
+            <?php if (! empty($result['supporting_snippet'])) : ?>
+                <button type="button" class="button button-secondary holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr((string) $result['supporting_snippet']); ?>">
+                    <?php esc_html_e('Copy snippet', 'holyprof-source-locator'); ?>
                 </button>
             <?php endif; ?>
         </div>

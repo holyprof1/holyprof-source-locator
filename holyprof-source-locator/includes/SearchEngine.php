@@ -1274,6 +1274,7 @@ class Holyprof_Source_Locator_SearchEngine {
             'reason_key' => '',
             'matched_term' => '',
             'reason_matches' => array(),
+            'known_hint_exact' => ! empty($entry['known_hint_exact']),
         );
         $haystacks = array(
             'page_title' => array('value' => isset($entry['page_title']) ? (string) $entry['page_title'] : '', 'label' => __('Page title', 'holyprof-source-locator'), 'exact' => 360, 'whole' => 310, 'contains' => 260),
@@ -1377,6 +1378,14 @@ class Holyprof_Source_Locator_SearchEngine {
                     ? __('Likely source theme', 'holyprof-source-locator')
                     : __('Likely source plugin', 'holyprof-source-locator'),
                 'score' => 220,
+            );
+        }
+
+        if ($location_kind === 'known-plugin-hint' && ! empty($analysis['known_hint_exact'])) {
+            return array(
+                'level' => 'exact',
+                'label' => __('Exact settings page', 'holyprof-source-locator'),
+                'score' => 320,
             );
         }
 
@@ -2020,12 +2029,23 @@ class Holyprof_Source_Locator_SearchEngine {
     }
 
     private function build_known_plugin_feature_hint_entry($plugin, $mapping) {
-        $slug = isset($mapping['slug']) ? sanitize_text_field((string) $mapping['slug']) : '';
-        $base_slug = isset($mapping['base_slug']) ? sanitize_text_field((string) $mapping['base_slug']) : $slug;
-        $menu_entry = $this->find_admin_menu_entry_by_slug($slug);
+        $preferred_slugs = array_map('sanitize_text_field', isset($mapping['preferred_slugs']) ? (array) $mapping['preferred_slugs'] : array());
+        $base_slug = isset($mapping['base_slug']) ? sanitize_text_field((string) $mapping['base_slug']) : '';
+        $title_tokens = isset($mapping['title_tokens']) ? (array) $mapping['title_tokens'] : array();
+        $menu_entry = $this->find_plugin_admin_page_entry(isset($mapping['plugin_slugs']) ? (array) $mapping['plugin_slugs'] : array(), $preferred_slugs, $title_tokens);
 
-        if (empty($menu_entry)) {
+        if (empty($menu_entry) && $base_slug !== '') {
             $menu_entry = $this->find_admin_menu_entry_by_slug($base_slug);
+        }
+
+        if (empty($menu_entry) && ! empty($preferred_slugs)) {
+            foreach ($preferred_slugs as $preferred_slug) {
+                $menu_entry = $this->find_admin_menu_entry_by_slug($preferred_slug);
+
+                if (! empty($menu_entry)) {
+                    break;
+                }
+            }
         }
 
         if (empty($menu_entry)) {
@@ -2034,12 +2054,14 @@ class Holyprof_Source_Locator_SearchEngine {
 
         $url_path = isset($mapping['url']) ? (string) $mapping['url'] : '';
         $url = $url_path !== '' ? admin_url(ltrim($url_path, '/')) : (isset($menu_entry['url']) ? (string) $menu_entry['url'] : '');
+        $entry_slug = isset($menu_entry['slug']) ? sanitize_text_field((string) $menu_entry['slug']) : '';
+        $known_hint_exact = ! empty($mapping['exact_if_preferred_slug']) && $entry_slug !== '' && in_array($entry_slug, $preferred_slugs, true);
 
         return array(
             'title' => isset($mapping['title']) ? (string) $mapping['title'] : '',
             'menu_title' => isset($mapping['menu_title']) ? (string) $mapping['menu_title'] : (isset($menu_entry['menu_title']) ? (string) $menu_entry['menu_title'] : ''),
             'page_title' => isset($mapping['page_title']) ? (string) $mapping['page_title'] : (isset($menu_entry['page_title']) ? (string) $menu_entry['page_title'] : ''),
-            'slug' => $slug !== '' ? $slug : (isset($menu_entry['slug']) ? (string) $menu_entry['slug'] : ''),
+            'slug' => $entry_slug !== '' ? $entry_slug : (isset($menu_entry['slug']) ? (string) $menu_entry['slug'] : ''),
             'path' => isset($mapping['path']) ? (string) $mapping['path'] : (isset($menu_entry['path']) ? (string) $menu_entry['path'] : ''),
             'url' => $url,
             'capability' => isset($menu_entry['capability']) ? (string) $menu_entry['capability'] : 'manage_options',
@@ -2051,6 +2073,7 @@ class Holyprof_Source_Locator_SearchEngine {
             'note' => isset($mapping['note']) ? (string) $mapping['note'] : '',
             'reason' => isset($mapping['reason']) ? (string) $mapping['reason'] : '',
             'is_clickable' => $url !== '',
+            'known_hint_exact' => $known_hint_exact,
         );
     }
 
@@ -2059,11 +2082,11 @@ class Holyprof_Source_Locator_SearchEngine {
             array(
                 'plugin_slugs' => array('jetpack'),
                 'keywords' => array('sitemap', 'sitemaps'),
-                'slug' => 'jetpack',
+                'preferred_slugs' => array('jetpack'),
                 'base_slug' => 'jetpack',
                 'url' => 'admin.php?page=jetpack#/traffic',
-                'title' => __('Likely Jetpack settings area', 'holyprof-source-locator'),
-                'page_title' => __('Likely Jetpack settings area', 'holyprof-source-locator'),
+                'title' => __('Jetpack Traffic / Sitemap Settings', 'holyprof-source-locator'),
+                'page_title' => __('Jetpack Traffic / Sitemap Settings', 'holyprof-source-locator'),
                 'menu_title' => __('Jetpack', 'holyprof-source-locator'),
                 'path' => __('Jetpack > Settings > Traffic > Sitemap', 'holyprof-source-locator'),
                 'note' => __('Check Jetpack settings/traffic area for sitemap controls.', 'holyprof-source-locator'),
@@ -2072,24 +2095,25 @@ class Holyprof_Source_Locator_SearchEngine {
             array(
                 'plugin_slugs' => array('seo-by-rank-math', 'rank-math'),
                 'keywords' => array('sitemap', 'sitemaps'),
-                'slug' => 'rank-math-options-sitemap',
+                'preferred_slugs' => array('rank-math-options-sitemap'),
                 'base_slug' => 'rank-math',
                 'url' => 'admin.php?page=rank-math-options-sitemap',
-                'title' => __('Likely Rank Math sitemap settings', 'holyprof-source-locator'),
-                'page_title' => __('Likely Rank Math sitemap settings', 'holyprof-source-locator'),
+                'title' => __('Rank Math Sitemap Settings', 'holyprof-source-locator'),
+                'page_title' => __('Rank Math Sitemap Settings', 'holyprof-source-locator'),
                 'menu_title' => __('Rank Math', 'holyprof-source-locator'),
                 'path' => __('Rank Math > Sitemap Settings', 'holyprof-source-locator'),
                 'note' => __('Check Rank Math sitemap settings for sitemap controls.', 'holyprof-source-locator'),
                 'reason' => __('Rank Math is active and may control sitemap settings for this site.', 'holyprof-source-locator'),
+                'exact_if_preferred_slug' => true,
             ),
             array(
                 'plugin_slugs' => array('seo-by-rank-math', 'rank-math'),
                 'keywords' => array('breadcrumb', 'breadcrumbs'),
-                'slug' => 'rank-math-options-general',
+                'preferred_slugs' => array('rank-math-options-general'),
                 'base_slug' => 'rank-math',
                 'url' => 'admin.php?page=rank-math-options-general',
-                'title' => __('Likely Rank Math breadcrumb settings', 'holyprof-source-locator'),
-                'page_title' => __('Likely Rank Math breadcrumb settings', 'holyprof-source-locator'),
+                'title' => __('Rank Math General / Breadcrumb Settings', 'holyprof-source-locator'),
+                'page_title' => __('Rank Math General / Breadcrumb Settings', 'holyprof-source-locator'),
                 'menu_title' => __('Rank Math', 'holyprof-source-locator'),
                 'path' => __('Rank Math > General Settings > Breadcrumbs', 'holyprof-source-locator'),
                 'note' => __('Check Rank Math general settings for breadcrumb controls.', 'holyprof-source-locator'),
@@ -2098,11 +2122,11 @@ class Holyprof_Source_Locator_SearchEngine {
             array(
                 'plugin_slugs' => array('wordpress-seo'),
                 'keywords' => array('sitemap', 'sitemaps', 'breadcrumb', 'breadcrumbs', 'robots', 'schema'),
-                'slug' => 'wpseo_page_settings',
+                'preferred_slugs' => array('wpseo_page_settings'),
                 'base_slug' => 'wpseo_dashboard',
                 'url' => 'admin.php?page=wpseo_page_settings',
-                'title' => __('Likely Yoast SEO settings area', 'holyprof-source-locator'),
-                'page_title' => __('Likely Yoast SEO settings area', 'holyprof-source-locator'),
+                'title' => __('Yoast SEO Settings', 'holyprof-source-locator'),
+                'page_title' => __('Yoast SEO Settings', 'holyprof-source-locator'),
                 'menu_title' => __('Yoast SEO', 'holyprof-source-locator'),
                 'path' => __('Yoast SEO > Settings', 'holyprof-source-locator'),
                 'note' => __('Check Yoast SEO settings for sitemap, breadcrumb, or search appearance controls.', 'holyprof-source-locator'),
@@ -2111,41 +2135,92 @@ class Holyprof_Source_Locator_SearchEngine {
             array(
                 'plugin_slugs' => array('wp-mail-smtp'),
                 'keywords' => array('smtp', 'email', 'emails'),
-                'slug' => 'wp-mail-smtp',
+                'preferred_slugs' => array('wp-mail-smtp'),
                 'base_slug' => 'wp-mail-smtp',
                 'url' => 'admin.php?page=wp-mail-smtp',
-                'title' => __('Likely WP Mail SMTP settings', 'holyprof-source-locator'),
-                'page_title' => __('Likely WP Mail SMTP settings', 'holyprof-source-locator'),
+                'title' => __('WP Mail SMTP Settings', 'holyprof-source-locator'),
+                'page_title' => __('WP Mail SMTP Settings', 'holyprof-source-locator'),
                 'menu_title' => __('WP Mail SMTP', 'holyprof-source-locator'),
                 'path' => __('WP Mail SMTP > Settings', 'holyprof-source-locator'),
                 'note' => __('Check WP Mail SMTP settings for email delivery controls.', 'holyprof-source-locator'),
                 'reason' => __('WP Mail SMTP is active and likely controls this email-related feature.', 'holyprof-source-locator'),
+                'exact_if_preferred_slug' => true,
             ),
             array(
                 'plugin_slugs' => array('woocommerce'),
                 'keywords' => array('checkout'),
-                'slug' => 'wc-settings',
+                'preferred_slugs' => array('wc-settings'),
                 'base_slug' => 'woocommerce',
                 'url' => 'admin.php?page=wc-settings&tab=checkout',
-                'title' => __('Likely WooCommerce checkout settings', 'holyprof-source-locator'),
-                'page_title' => __('Likely WooCommerce checkout settings', 'holyprof-source-locator'),
+                'title' => __('WooCommerce Checkout Settings', 'holyprof-source-locator'),
+                'page_title' => __('WooCommerce Checkout Settings', 'holyprof-source-locator'),
                 'menu_title' => __('WooCommerce', 'holyprof-source-locator'),
                 'path' => __('WooCommerce > Settings > Checkout', 'holyprof-source-locator'),
                 'note' => __('Check WooCommerce settings for checkout-related controls.', 'holyprof-source-locator'),
                 'reason' => __('WooCommerce is active and likely controls checkout-related settings.', 'holyprof-source-locator'),
             ),
             array(
+                'plugin_slugs' => array('woocommerce'),
+                'keywords' => array('payment', 'payments'),
+                'preferred_slugs' => array('wc-settings'),
+                'base_slug' => 'woocommerce',
+                'url' => 'admin.php?page=wc-settings&tab=checkout',
+                'title' => __('WooCommerce Payments / Checkout Settings', 'holyprof-source-locator'),
+                'page_title' => __('WooCommerce Payments / Checkout Settings', 'holyprof-source-locator'),
+                'menu_title' => __('WooCommerce', 'holyprof-source-locator'),
+                'path' => __('WooCommerce > Settings > Payments / Checkout', 'holyprof-source-locator'),
+                'note' => __('Check WooCommerce payment and checkout settings for this feature.', 'holyprof-source-locator'),
+                'reason' => __('WooCommerce is active and likely controls payment-related settings.', 'holyprof-source-locator'),
+            ),
+            array(
                 'plugin_slugs' => array('litespeed-cache'),
                 'keywords' => array('cache', 'caching'),
-                'slug' => 'litespeed',
+                'preferred_slugs' => array('litespeed'),
                 'base_slug' => 'litespeed',
                 'url' => 'admin.php?page=litespeed',
-                'title' => __('Likely LiteSpeed Cache settings', 'holyprof-source-locator'),
-                'page_title' => __('Likely LiteSpeed Cache settings', 'holyprof-source-locator'),
+                'title' => __('LiteSpeed Cache Settings', 'holyprof-source-locator'),
+                'page_title' => __('LiteSpeed Cache Settings', 'holyprof-source-locator'),
                 'menu_title' => __('LiteSpeed Cache', 'holyprof-source-locator'),
                 'path' => __('LiteSpeed Cache > Settings', 'holyprof-source-locator'),
                 'note' => __('Check LiteSpeed Cache settings for cache-related controls.', 'holyprof-source-locator'),
                 'reason' => __('LiteSpeed Cache is active and likely controls caching for this site.', 'holyprof-source-locator'),
+            ),
+            array(
+                'plugin_slugs' => array('jetpack'),
+                'keywords' => array('analytics', 'stats'),
+                'preferred_slugs' => array('stats', 'jetpack'),
+                'base_slug' => 'jetpack',
+                'url' => 'admin.php?page=stats',
+                'title' => __('Jetpack Stats / Traffic', 'holyprof-source-locator'),
+                'page_title' => __('Jetpack Stats / Traffic', 'holyprof-source-locator'),
+                'menu_title' => __('Jetpack', 'holyprof-source-locator'),
+                'path' => __('Jetpack > Stats / Traffic', 'holyprof-source-locator'),
+                'note' => __('Check Jetpack stats or traffic settings for analytics-related controls.', 'holyprof-source-locator'),
+                'reason' => __('Jetpack is active and likely controls this analytics-related feature.', 'holyprof-source-locator'),
+            ),
+            array(
+                'plugin_slugs' => array('gosmtp', 'go-smtp'),
+                'keywords' => array('smtp', 'email', 'emails'),
+                'preferred_slugs' => array('gosmtp', 'go-smtp'),
+                'title_tokens' => array('smtp', 'mail'),
+                'title' => __('GoSMTP Settings', 'holyprof-source-locator'),
+                'page_title' => __('GoSMTP Settings', 'holyprof-source-locator'),
+                'menu_title' => __('GoSMTP', 'holyprof-source-locator'),
+                'note' => __('Check the active GoSMTP settings page for email delivery controls.', 'holyprof-source-locator'),
+                'reason' => __('GoSMTP is active and likely controls this email-related feature.', 'holyprof-source-locator'),
+                'exact_if_preferred_slug' => true,
+            ),
+            array(
+                'plugin_slugs' => array('hydra-bookings', 'hydra-booking'),
+                'keywords' => array('booking', 'bookings', 'checkout', 'payment', 'payments'),
+                'preferred_slugs' => array('hydra-bookings', 'hydra-booking'),
+                'title_tokens' => array('booking', 'checkout', 'payment'),
+                'title' => __('Hydra Bookings Settings', 'holyprof-source-locator'),
+                'page_title' => __('Hydra Bookings Settings', 'holyprof-source-locator'),
+                'menu_title' => __('Hydra Bookings', 'holyprof-source-locator'),
+                'note' => __('Check Hydra Bookings settings for booking, checkout, or payment controls.', 'holyprof-source-locator'),
+                'reason' => __('Hydra Bookings is active and likely controls this booking-related feature.', 'holyprof-source-locator'),
+                'exact_if_preferred_slug' => true,
             ),
         );
     }
@@ -2192,6 +2267,52 @@ class Holyprof_Source_Locator_SearchEngine {
         }
 
         return array();
+    }
+
+    private function find_plugin_admin_page_entry($plugin_slugs, $preferred_slugs = array(), $title_tokens = array()) {
+        $plugin_slugs = array_map('sanitize_key', (array) $plugin_slugs);
+        $preferred_slugs = array_map('sanitize_text_field', (array) $preferred_slugs);
+        $title_tokens = array_map(array($this, 'normalize_search_value'), (array) $title_tokens);
+        $best_entry = array();
+        $best_score = 0;
+
+        foreach ($this->get_plugin_admin_page_entries() as $entry) {
+            $plugin_slug = isset($entry['plugin_slug']) ? sanitize_key((string) $entry['plugin_slug']) : '';
+
+            if ($plugin_slug === '' || ! in_array($plugin_slug, $plugin_slugs, true)) {
+                continue;
+            }
+
+            $entry_slug = isset($entry['slug']) ? sanitize_text_field((string) $entry['slug']) : '';
+            $haystack = $this->normalize_search_value(
+                implode(
+                    ' ',
+                    array(
+                        isset($entry['menu_title']) ? (string) $entry['menu_title'] : '',
+                        isset($entry['page_title']) ? (string) $entry['page_title'] : '',
+                        isset($entry['path']) ? (string) $entry['path'] : '',
+                    )
+                )
+            );
+            $score = 100;
+
+            if ($entry_slug !== '' && in_array($entry_slug, $preferred_slugs, true)) {
+                $score += 320;
+            }
+
+            foreach ($title_tokens as $token) {
+                if ($token !== '' && strpos($haystack, $token) !== false) {
+                    $score += 70;
+                }
+            }
+
+            if ($score > $best_score) {
+                $best_score = $score;
+                $best_entry = $entry;
+            }
+        }
+
+        return $best_entry;
     }
 
     private function has_matching_feature_location_result($results, $candidate) {
