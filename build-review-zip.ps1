@@ -5,9 +5,9 @@ $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $sourceRoot = Join-Path $repoRoot 'trunk'
 $packageRoot = Join-Path $repoRoot '_package'
 $packagePluginRoot = Join-Path $packageRoot 'holyprof-source-locator'
-$zipPath = Join-Path $repoRoot 'holyprof-source-locator-review.zip'
+$zipPath = Join-Path $repoRoot 'holyprof-source-locator.zip'
 $zipTestRoot = Join-Path $repoRoot '_zip-test'
-$desktopZipPath = 'C:\Users\HP\OneDrive\Desktop\search plugin\holyprof-source-locator-review.zip'
+$desktopZipPath = 'C:\Users\HP\OneDrive\Desktop\search plugin\holyprof-source-locator.zip'
 
 function Remove-IfExists {
     param(
@@ -111,6 +111,76 @@ function Invoke-PhpLint {
     }
 }
 
+function Get-NormalizedZipEntries {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $ZipFilePath
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipFilePath)
+
+    try {
+        $entries = @()
+
+        foreach ($entry in $archive.Entries) {
+            $entries += $entry.FullName.Replace('\', '/')
+        }
+
+        return $entries
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
+
+function Test-ZipEntries {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]] $Entries
+    )
+
+    $requiredEntries = @(
+        'holyprof-source-locator/holyprof-source-locator.php',
+        'holyprof-source-locator/readme.txt',
+        'holyprof-source-locator/uninstall.php',
+        'holyprof-source-locator/admin/AdminPage.php',
+        'holyprof-source-locator/assets/admin.css',
+        'holyprof-source-locator/assets/admin.js',
+        'holyprof-source-locator/includes/SearchEngine.php'
+    )
+    $forbiddenPrefixes = @(
+        'holyprof-source-locator-review/',
+        'trunk/',
+        'holyprof-source-locator/holyprof-source-locator/',
+        '.svn/',
+        '.git/',
+        '.github/'
+    )
+
+    foreach ($requiredEntry in $requiredEntries) {
+        if ($Entries -notcontains $requiredEntry) {
+            throw "Packaged zip is invalid. Missing expected zip entry: $requiredEntry"
+        }
+    }
+
+    foreach ($entry in $Entries) {
+        foreach ($forbiddenPrefix in $forbiddenPrefixes) {
+            if ($entry.StartsWith($forbiddenPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "Packaged zip is invalid. Forbidden zip entry detected: $entry"
+            }
+        }
+
+        if ($entry -match '(^|/)(?:\.svn|\.git)(/|$)') {
+            throw "Packaged zip is invalid. Source-control entry detected: $entry"
+        }
+
+        if ($entry -match '\.zip$') {
+            throw "Packaged zip is invalid. Nested zip detected: $entry"
+        }
+    }
+}
+
 if (-not (Test-Path -LiteralPath $sourceRoot)) {
     throw "Source trunk not found: $sourceRoot"
 }
@@ -124,12 +194,25 @@ Copy-TrunkContents -FromPath $sourceRoot -ToPath $packagePluginRoot
 
 Compress-Archive -Path $packagePluginRoot -DestinationPath $zipPath -CompressionLevel Optimal -Force
 
+$zipEntries = Get-NormalizedZipEntries -ZipFilePath $zipPath
+Test-ZipEntries -Entries $zipEntries
+
 Expand-Archive -LiteralPath $zipPath -DestinationPath $zipTestRoot -Force
 
 $expectedPluginFile = Join-Path $zipTestRoot 'holyprof-source-locator\holyprof-source-locator.php'
+$wrongReviewPath = Join-Path $zipTestRoot 'holyprof-source-locator-review\holyprof-source-locator\holyprof-source-locator.php'
+$wrongNestedPath = Join-Path $zipTestRoot 'holyprof-source-locator\holyprof-source-locator\holyprof-source-locator.php'
 
 if (-not (Test-Path -LiteralPath $expectedPluginFile)) {
     throw "Packaged zip is invalid. Missing expected plugin file: $expectedPluginFile"
+}
+
+if (Test-Path -LiteralPath $wrongReviewPath) {
+    throw "Packaged zip is invalid. Unexpected review path exists after extraction: $wrongReviewPath"
+}
+
+if (Test-Path -LiteralPath $wrongNestedPath) {
+    throw "Packaged zip is invalid. Unexpected nested plugin path exists after extraction: $wrongNestedPath"
 }
 
 Invoke-PhpLint -Paths @(
@@ -143,6 +226,6 @@ Copy-Item -LiteralPath $zipPath -Destination $desktopZipPath -Force
 Remove-IfExists -Path $zipTestRoot
 Remove-IfExists -Path $packageRoot
 
-Write-Host "Review zip built successfully:"
+Write-Host "Plugin zip built successfully:"
 Write-Host " - $zipPath"
 Write-Host " - $desktopZipPath"
