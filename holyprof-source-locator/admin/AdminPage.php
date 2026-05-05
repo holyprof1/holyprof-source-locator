@@ -632,7 +632,7 @@ class Holyprof_Source_Locator_AdminPage {
                                 <?php if (! empty($result['source_type'])) : ?>
                                     <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-source"><?php echo esc_html($result['source_type']); ?></span>
                                 <?php endif; ?>
-                                <span class="holyprof-source-locator-file-badge holyprof-source-locator-file-badge-menu"><?php echo esc_html($this->get_location_result_match_badge($result)); ?></span>
+                                <span class="holyprof-source-locator-file-badge <?php echo esc_attr($this->get_location_result_badge_class($result)); ?>"><?php echo esc_html($this->get_location_result_match_badge($result)); ?></span>
                             </div>
                         </div>
 
@@ -660,7 +660,7 @@ class Holyprof_Source_Locator_AdminPage {
                                 <p><strong><?php esc_html_e('Admin URL:', 'holyprof-source-locator'); ?></strong> <code><?php echo esc_html($result['url']); ?></code></p>
                             <?php endif; ?>
                             <?php if (! empty($result['reason'])) : ?>
-                                <p><strong><?php esc_html_e('Why this matched:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($result['reason']); ?></p>
+                                <p class="holyprof-source-locator-match-reason"><strong><?php esc_html_e('Why this matched:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($result['reason']); ?></p>
                             <?php endif; ?>
                             <?php if (! empty($result['note'])) : ?>
                                 <p class="holyprof-source-locator-setting-note"><?php echo esc_html($result['note']); ?></p>
@@ -680,6 +680,9 @@ class Holyprof_Source_Locator_AdminPage {
     }
 
     private function render_location_actions($result) {
+        $has_openable_url = ! empty($result['url'])
+            && ! empty($result['is_clickable'])
+            && $this->is_valid_admin_result_url((string) $result['url']);
         ob_start();
         ?>
         <div class="holyprof-source-locator-result-actions">
@@ -688,7 +691,7 @@ class Holyprof_Source_Locator_AdminPage {
                     <?php esc_html_e('Open settings page', 'holyprof-source-locator'); ?>
                 </a>
             <?php endif; ?>
-            <?php if (! empty($result['url'])) : ?>
+            <?php if ($has_openable_url) : ?>
                 <button type="button" class="button button-secondary holyprof-source-locator-copy-button" data-copy-text="<?php echo esc_attr($result['url']); ?>">
                     <?php esc_html_e('Copy admin URL', 'holyprof-source-locator'); ?>
                 </button>
@@ -812,6 +815,24 @@ class Holyprof_Source_Locator_AdminPage {
         return __('Source file match', 'holyprof-source-locator');
     }
 
+    private function get_location_result_badge_class($result) {
+        $level = isset($result['confidence_level']) ? (string) $result['confidence_level'] : '';
+
+        if ($level === 'exact') {
+            return 'holyprof-source-locator-file-badge-confidence-exact';
+        }
+
+        if ($level === 'likely') {
+            return 'holyprof-source-locator-file-badge-confidence-likely';
+        }
+
+        if ($level === 'possible') {
+            return 'holyprof-source-locator-file-badge-confidence-possible';
+        }
+
+        return 'holyprof-source-locator-file-badge-menu';
+    }
+
     private function highlight_match($snippet, $search_term) {
         $escaped_snippet = esc_html($snippet);
         $escaped_search_term = esc_html($search_term);
@@ -863,7 +884,7 @@ class Holyprof_Source_Locator_AdminPage {
         $capability = isset($result['capability']) ? (string) $result['capability'] : '';
         $url = isset($result['url']) ? (string) $result['url'] : '';
 
-        if (! $this->is_valid_admin_result_url($url)) {
+        if (empty($result['is_clickable']) || ! $this->is_valid_admin_result_url($url)) {
             return false;
         }
 

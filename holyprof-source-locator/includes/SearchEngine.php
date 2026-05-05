@@ -1770,11 +1770,11 @@ class Holyprof_Source_Locator_SearchEngine {
                             'slug' => $page_slug,
                             'capability' => isset($page_data['capability']) ? $page_data['capability'] : '',
                             'path' => $this->build_registered_setting_path($page_data, $section_title, $field_title),
-                            'url' => isset($page_data['url']) ? $page_data['url'] : $this->build_admin_url($page_slug, isset($page_data['parent_slug']) ? (string) $page_data['parent_slug'] : ''),
+                            'url' => isset($page_data['url']) ? $page_data['url'] : '',
                             'source' => __('Registered Settings Field', 'holyprof-source-locator'),
                             'match_type' => __('Settings field', 'holyprof-source-locator'),
                             'source_type' => $this->get_registered_settings_source_type($page_slug, $page_data),
-                            'is_clickable' => ! empty($page_data['url']) || $this->build_admin_url($page_slug, isset($page_data['parent_slug']) ? (string) $page_data['parent_slug'] : '') !== '',
+                            'is_clickable' => ! empty($page_data['url']),
                         );
                     }
                 } else {
@@ -1788,11 +1788,11 @@ class Holyprof_Source_Locator_SearchEngine {
                         'slug' => $page_slug,
                         'capability' => isset($page_data['capability']) ? $page_data['capability'] : '',
                         'path' => $this->build_registered_setting_path($page_data, $section_title, ''),
-                        'url' => isset($page_data['url']) ? $page_data['url'] : $this->build_admin_url($page_slug, isset($page_data['parent_slug']) ? (string) $page_data['parent_slug'] : ''),
+                        'url' => isset($page_data['url']) ? $page_data['url'] : '',
                         'source' => __('Registered Settings Section', 'holyprof-source-locator'),
                         'match_type' => __('Settings section', 'holyprof-source-locator'),
                         'source_type' => $this->get_registered_settings_source_type($page_slug, $page_data),
-                        'is_clickable' => ! empty($page_data['url']) || $this->build_admin_url($page_slug, isset($page_data['parent_slug']) ? (string) $page_data['parent_slug'] : '') !== '',
+                        'is_clickable' => ! empty($page_data['url']),
                     );
                 }
             }
@@ -1813,11 +1813,11 @@ class Holyprof_Source_Locator_SearchEngine {
                 'slug' => $group,
                 'capability' => isset($page_data['capability']) ? $page_data['capability'] : '',
                 'path' => $this->build_registered_setting_path($page_data, '', $setting_name),
-                'url' => isset($page_data['url']) ? $page_data['url'] : $this->build_admin_url($group, isset($page_data['parent_slug']) ? (string) $page_data['parent_slug'] : ''),
+                'url' => isset($page_data['url']) ? $page_data['url'] : '',
                 'source' => __('Registered Setting', 'holyprof-source-locator'),
                 'match_type' => __('Setting name', 'holyprof-source-locator'),
                 'source_type' => $this->get_registered_settings_source_type($group, $page_data),
-                'is_clickable' => ! empty($page_data['url']) || $this->build_admin_url($group, isset($page_data['parent_slug']) ? (string) $page_data['parent_slug'] : '') !== '',
+                'is_clickable' => ! empty($page_data['url']),
             );
         }
 

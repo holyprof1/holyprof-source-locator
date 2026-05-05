@@ -168,6 +168,17 @@
     color: #50575e;
 }
 
+.holyprof-source-locator-match-reason {
+    padding: 12px 14px;
+    border: 1px solid #d7e6f2;
+    border-radius: 8px;
+    background: #f7fbff;
+}
+
+.holyprof-source-locator-setting-meta code {
+    word-break: break-word;
+}
+
 .holyprof-source-locator-setting-action {
     margin-top: 12px;
 }
@@ -406,6 +417,12 @@
     .holyprof-source-locator-setting-header,
     .holyprof-source-locator-setting-meta {
         padding: 14px;
+    }
+
+    .holyprof-source-locator-result-actions .button,
+    .holyprof-source-locator-match-row-actions .button {
+        width: 100%;
+        justify-content: center;
     }
 
     .holyprof-source-locator-match-row {
