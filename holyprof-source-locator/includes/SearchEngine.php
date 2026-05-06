@@ -750,6 +750,10 @@ class Holyprof_Source_Locator_SearchEngine {
             'has_known_owner' => ! empty($real_support['has_known_owner']),
             'has_supporting_evidence' => ! empty($real_support['has_supporting_evidence']) || ! empty($related_evidence),
             'is_search_hint' => false,
+            'plugin_name' => isset($entry['plugin_name']) ? (string) $entry['plugin_name'] : '',
+            'plugin_slug' => isset($entry['plugin_slug']) ? (string) $entry['plugin_slug'] : '',
+            'plugin_state' => isset($entry['plugin_state']) ? (string) $entry['plugin_state'] : '',
+            'plugin_state_label' => isset($entry['plugin_state_label']) ? (string) $entry['plugin_state_label'] : '',
         );
     }
 
@@ -2000,7 +2004,7 @@ class Holyprof_Source_Locator_SearchEngine {
                 continue;
             }
 
-            $plugin = $this->find_active_plugin_by_slugs($mapping['plugin_slugs']);
+            $plugin = $this->find_installed_plugin_by_slugs($mapping['plugin_slugs']);
 
             if (empty($plugin)) {
                 continue;
@@ -2048,32 +2052,49 @@ class Holyprof_Source_Locator_SearchEngine {
             }
         }
 
-        if (empty($menu_entry)) {
-            return array();
-        }
-
         $url_path = isset($mapping['url']) ? (string) $mapping['url'] : '';
         $url = $url_path !== '' ? admin_url(ltrim($url_path, '/')) : (isset($menu_entry['url']) ? (string) $menu_entry['url'] : '');
         $entry_slug = isset($menu_entry['slug']) ? sanitize_text_field((string) $menu_entry['slug']) : '';
         $known_hint_exact = ! empty($mapping['exact_if_preferred_slug']) && $entry_slug !== '' && in_array($entry_slug, $preferred_slugs, true);
+        $plugin_is_active = ! empty($plugin['is_active']);
+        $plugin_state = $plugin_is_active ? 'active' : 'inactive';
+        $plugin_state_label = $plugin_is_active
+            ? __('Active', 'holyprof-source-locator')
+            : __('Inactive', 'holyprof-source-locator');
+        $default_note = isset($mapping['note']) ? (string) $mapping['note'] : '';
+        $state_note = $plugin_is_active
+            ? __('This plugin is active on the current site.', 'holyprof-source-locator')
+            : __('This plugin is installed but inactive on the current site.', 'holyprof-source-locator');
+        $note = trim($default_note . ' ' . $state_note);
+        $title = isset($mapping['title']) ? (string) $mapping['title'] : (isset($menu_entry['page_title']) ? (string) $menu_entry['page_title'] : '');
+        $menu_title = isset($mapping['menu_title']) ? (string) $mapping['menu_title'] : (isset($menu_entry['menu_title']) ? (string) $menu_entry['menu_title'] : (isset($plugin['plugin_name']) ? (string) $plugin['plugin_name'] : ''));
+        $page_title = isset($mapping['page_title']) ? (string) $mapping['page_title'] : (isset($menu_entry['page_title']) ? (string) $menu_entry['page_title'] : $title);
+        $path = isset($mapping['path']) ? (string) $mapping['path'] : (isset($menu_entry['path']) ? (string) $menu_entry['path'] : $menu_title);
+        $reason = isset($mapping['reason']) ? (string) $mapping['reason'] : '';
+
+        if (! $plugin_is_active && $reason !== '') {
+            $reason .= ' ' . __('The plugin is currently inactive, so this settings page may not be available until it is activated.', 'holyprof-source-locator');
+        }
 
         return array(
-            'title' => isset($mapping['title']) ? (string) $mapping['title'] : '',
-            'menu_title' => isset($mapping['menu_title']) ? (string) $mapping['menu_title'] : (isset($menu_entry['menu_title']) ? (string) $menu_entry['menu_title'] : ''),
-            'page_title' => isset($mapping['page_title']) ? (string) $mapping['page_title'] : (isset($menu_entry['page_title']) ? (string) $menu_entry['page_title'] : ''),
+            'title' => $title,
+            'menu_title' => $menu_title,
+            'page_title' => $page_title,
             'slug' => $entry_slug !== '' ? $entry_slug : (isset($menu_entry['slug']) ? (string) $menu_entry['slug'] : ''),
-            'path' => isset($mapping['path']) ? (string) $mapping['path'] : (isset($menu_entry['path']) ? (string) $menu_entry['path'] : ''),
+            'path' => $path,
             'url' => $url,
             'capability' => isset($menu_entry['capability']) ? (string) $menu_entry['capability'] : 'manage_options',
-            'source' => __('Known active plugin mapping', 'holyprof-source-locator'),
+            'source' => __('Known plugin settings map', 'holyprof-source-locator'),
             'match_type' => __('Known plugin setting', 'holyprof-source-locator'),
             'source_type' => __('Plugin', 'holyprof-source-locator'),
             'plugin_slug' => isset($plugin['plugin_slug']) ? (string) $plugin['plugin_slug'] : '',
             'plugin_name' => isset($plugin['plugin_name']) ? (string) $plugin['plugin_name'] : '',
-            'note' => isset($mapping['note']) ? (string) $mapping['note'] : '',
-            'reason' => isset($mapping['reason']) ? (string) $mapping['reason'] : '',
-            'is_clickable' => $url !== '',
+            'note' => $note,
+            'reason' => $reason,
+            'is_clickable' => $plugin_is_active && $url !== '',
             'known_hint_exact' => $known_hint_exact,
+            'plugin_state' => $plugin_state,
+            'plugin_state_label' => $plugin_state_label,
         );
     }
 
@@ -2225,10 +2246,10 @@ class Holyprof_Source_Locator_SearchEngine {
         );
     }
 
-    private function find_active_plugin_by_slugs($plugin_slugs) {
+    private function find_installed_plugin_by_slugs($plugin_slugs) {
         $slugs = array_map('sanitize_key', (array) $plugin_slugs);
 
-        foreach ($this->get_active_plugin_catalog() as $plugin) {
+        foreach ($this->get_installed_plugin_catalog() as $plugin) {
             $plugin_slug = isset($plugin['plugin_slug']) ? sanitize_key((string) $plugin['plugin_slug']) : '';
 
             if ($plugin_slug !== '' && in_array($plugin_slug, $slugs, true)) {
@@ -2237,6 +2258,50 @@ class Holyprof_Source_Locator_SearchEngine {
         }
 
         return array();
+    }
+
+    private function get_installed_plugin_catalog() {
+        $catalog = array();
+        $active_plugins = array_map(
+            'plugin_basename',
+            $this->get_active_plugin_paths()
+        );
+
+        if (! function_exists('get_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        foreach ((array) get_plugins() as $plugin_basename => $plugin_data) {
+            $parts = explode('/', (string) $plugin_basename);
+            $plugin_slug = count($parts) > 1 ? $parts[0] : basename($parts[0], '.php');
+
+            if ($plugin_slug === '') {
+                continue;
+            }
+
+            if (! isset($catalog[$plugin_slug])) {
+                $catalog[$plugin_slug] = array(
+                    'plugin_slug' => $plugin_slug,
+                    'plugin_basename' => (string) $plugin_basename,
+                    'plugin_name' => ! empty($plugin_data['Name'])
+                        ? sanitize_text_field((string) $plugin_data['Name'])
+                        : $this->slug_to_label($plugin_slug),
+                    'is_active' => in_array((string) $plugin_basename, $active_plugins, true),
+                );
+                continue;
+            }
+
+            if (! empty($plugin_data['Name']) && empty($catalog[$plugin_slug]['plugin_name'])) {
+                $catalog[$plugin_slug]['plugin_name'] = sanitize_text_field((string) $plugin_data['Name']);
+            }
+
+            if (in_array((string) $plugin_basename, $active_plugins, true)) {
+                $catalog[$plugin_slug]['plugin_basename'] = (string) $plugin_basename;
+                $catalog[$plugin_slug]['is_active'] = true;
+            }
+        }
+
+        return array_values($catalog);
     }
 
     private function variants_match_keywords($variants, $keywords) {

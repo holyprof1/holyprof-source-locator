@@ -638,11 +638,17 @@ class Holyprof_Source_Locator_AdminPage {
 
                         <div class="holyprof-source-locator-setting-meta">
                             <p><strong><?php esc_html_e('Match Type:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($this->get_location_result_match_badge($result)); ?></p>
+                            <?php if (! empty($result['confidence_label'])) : ?>
+                                <p><strong><?php esc_html_e('Confidence:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($result['confidence_label']); ?></p>
+                            <?php endif; ?>
                             <?php if (! empty($result['page_title'])) : ?>
                                 <p><strong><?php esc_html_e('Page Title:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($result['page_title']); ?></p>
                             <?php endif; ?>
                             <?php if ($this->get_location_result_owner($result) !== '') : ?>
                                 <p><strong><?php esc_html_e('Source Name:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($this->get_location_result_owner($result)); ?></p>
+                            <?php endif; ?>
+                            <?php if (! empty($result['plugin_state_label'])) : ?>
+                                <p><strong><?php esc_html_e('Plugin State:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($result['plugin_state_label']); ?></p>
                             <?php endif; ?>
                             <?php if (! empty($result['source_type'])) : ?>
                                 <p><strong><?php esc_html_e('Source Type:', 'holyprof-source-locator'); ?></strong> <?php echo esc_html($result['source_type']); ?></p>
